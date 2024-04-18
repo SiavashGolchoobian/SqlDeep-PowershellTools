@@ -1,14 +1,14 @@
 #--------------------------------------------------------------Parameters.
 #---Copy and Restore full,diff and log backups from Source Server to Target Server (Golchoobian)
-#$SourceInstanceConnectionString="Data Source=LSNRIDEA.SAIPACORP.COM,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;"
-#$DestinationInstanceConnectionString="Data Source=DB-DR-DGV01.SAIPACORP.COM\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;"
-#$SourceDB="IdeaDB"
-#$DestinationDB="IdeDB_DR"
-#$FileRepositoryUncPath="\\DB-DR-DGV01.saipacorp.com\Backup"
+#$SourceInstanceConnectionString="Data Source=LSNR.sqldeep.local,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;"
+#$DestinationInstanceConnectionString="Data Source=myDisaster.sqldeep.local\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;"
+#$SourceDB="myDB"
+#$DestinationDB="myDB_DR"
+#$FileRepositoryUncPath="\\myDisaster.sqldeep.local\Backup"
 #$SetDestinationDBToMode="RESTOREONLY"
-#$LogInstanceConnectionString="Data Source=DB-MN-DLV02.SAIPACORP.COM\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;"
+#$LogInstanceConnectionString="Data Source=mySql.SqlDeep.local\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;"
 #$LogTableName="[dbo].[Events]"
-#$LogFilePath="U:\Databases\Audit\DatabaseShipping_DB_C1_DLV11_{DateTime}.txt"
+#$LogFilePath="C:\Databases\Audit\DatabaseShipping_myServer_{DateTime}.txt"
 
 Param(
    [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
@@ -19,7 +19,7 @@ Param(
    [Parameter(Mandatory=$false)][ValidateSet("RECOVER","RESTOREONLY")][string]$SetDestinationDBToMode="RESTOREONLY",
    [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
    [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
-   [Parameter(Mandatory=$false)][string]$LogFilePath="U:\Databases\Audit\DatabaseShipping_DB_C1_DLV11_{DateTime}.txt"
+   [Parameter(Mandatory=$false)][string]$LogFilePath="U:\Databases\Audit\DatabaseShipping_myServer_{DateTime}.txt"
    )
 #---------------------------------------------------------FUNCTIONS
 Function Get-FunctionName ([int]$StackNumber = 1) { #Create Log Table if not exists
