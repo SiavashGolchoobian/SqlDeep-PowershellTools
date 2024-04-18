@@ -1,12 +1,12 @@
 #--------------------------------------------------------------Parameters.
 #---Copy and Restore full,diff and log backups from Source Server to Target Server (Golchoobian)
-#$SourceInstanceConnectionString="Data Source=LSNR.sqldeep.local,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;"
-#$DestinationInstanceConnectionString="Data Source=myDisaster.sqldeep.local\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;"
+#$SourceInstanceConnectionString="Data Source=LSNR.sqldeep.local;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;"
+#$DestinationInstanceConnectionString="Data Source=myDisaster.sqldeep.local\NODE;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;"
 #$SourceDB="myDB"
 #$DestinationDB="myDB_DR"
 #$FileRepositoryUncPath="\\myDisaster.sqldeep.local\Backup"
 #$SetDestinationDBToMode="RESTOREONLY"
-#$LogInstanceConnectionString="Data Source=mySql.SqlDeep.local\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;"
+#$LogInstanceConnectionString="Data Source=mySql.SqlDeep.local\NODE;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;"
 #$LogTableName="[dbo].[Events]"
 #$LogFilePath="C:\Databases\Audit\DatabaseShipping_myServer_{DateTime}.txt"
 
