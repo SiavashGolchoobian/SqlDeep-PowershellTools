@@ -14,7 +14,7 @@ Param(
    [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
    [Parameter(Mandatory=$true)][string]$DestinationInstanceConnectionString,
    [Parameter(Mandatory=$true)][string]$SourceDB,
-   [Parameter(Mandatory=$true)][string]$DestinationDB,
+   [Parameter(Mandatory=$false)][string]$DestinationDB,
    [Parameter(Mandatory=$true)][string]$FileRepositoryUncPath,
    [Parameter(Mandatory=$false)][ValidateSet("RECOVER","RESTOREONLY")][string]$SetDestinationDBToMode="RESTOREONLY",
    [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
@@ -548,6 +548,7 @@ $LogFilePath=$LogFilePath.Replace("{Date}",$mySysToday)
 $LogFilePath=$LogFilePath.Replace("{DateTime}",$mySysTodayTime)
 $mySysErrCount=0
 $mySysWrnCount=0
+
 #--=======================Initial Log Modules
 Write-Log -Type INF -Content "Restore started..."
 Write-Log -Type INF -Content ("Initializing EventsTable.Create.")
@@ -556,6 +557,13 @@ if ($mySysEventsLogToTableFeature -eq $false)  {Write-Log -Type WRN -Content "Ca
 
 #--=======================Validate input parameters
 $FileRepositoryUncPath=Path.CorrectFolderPathFormat -FolderPath $FileRepositoryUncPath
+if ($SourceDB.Trim().Length -eq 0) {
+    Write-Log -Type ERR -Content ("Source SourceDB is empty.") -Terminate
+}
+if ($null -eq $DestinationDB -or $DestinationDB.Trim().Length -eq 0) {
+    Write-Log -Type WRN -Content ("DestinationDB is empty, SourceDB name is used as DestinationDB name.")
+    $DestinationDB=$SourceDB
+}
 
 #--=======================Check source connectivity
 Write-Log -Type INF -Content ("Check Source Instance Connectivity of " + $SourceInstanceConnectionString)
