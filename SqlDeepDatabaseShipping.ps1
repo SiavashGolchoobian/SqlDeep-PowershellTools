@@ -343,7 +343,7 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
         AND [myBackupset].[type] = 'L'
         AND [myDatabase].[name] = @myDBName
         AND [myBackupset].[backup_start_date] <= @myRecoveryDate
-        AND [myBackupset].[first_lsn] >= @myLatestLsn
+        --AND [myBackupset].[first_lsn] >= @myLatestLsn
 		AND (
             [myBackupset].[first_lsn] >= ISNULL(@myStartLsn,@myLatestLsn) 
             OR 
