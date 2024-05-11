@@ -283,7 +283,8 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
         AND [myDatabase].[name] = @myDBName 
         AND [myBackupset].[first_lsn] >= @myLatestLsn
         AND @myRecoveryDate >= [myBackupset].[backup_start_date] 
-		AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
+        AND [myBackupset].[backup_finish_date] IS NOT NULL
+		--AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
     ORDER BY 
         [myBackupset].[backup_start_date] DESC;
     -------------------------------------------Diff Backup
@@ -312,7 +313,8 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
         AND [myBackupset].[type] = 'I'
         AND [myDatabase].[name] = @myDBName
         AND @myRecoveryDate >= [myBackupset].[backup_start_date] 
-		AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
+        AND [myBackupset].[backup_finish_date] IS NOT NULL
+		--AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
         AND [myBackupset].[first_lsn] >= @myStartLsn
         AND [myBackupset].[first_lsn] >= ISNULL(@myLatestLsn,@myLatestLsn)
     ORDER BY 
@@ -345,7 +347,8 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
         AND [myBackupset].[type] = 'L'
         AND [myDatabase].[name] = @myDBName
         AND @myRecoveryDate >= [myBackupset].[backup_start_date] 
-		AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
+        AND [myBackupset].[backup_finish_date] IS NOT NULL
+		--AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
         --AND [myBackupset].[first_lsn] >= @myLatestLsn
 		AND (
             [myBackupset].[first_lsn] >= ISNULL(@myStartLsn,@myLatestLsn) 
