@@ -17,10 +17,10 @@ Param(
    [Parameter(Mandatory=$false)][string]$DestinationDB,
    [Parameter(Mandatory=$true)][string]$FileRepositoryUncPath,
    [Parameter(Mandatory=$false)][ValidateSet("RECOVER","RESTOREONLY")][string]$SetDestinationDBToMode="RESTOREONLY",
-   [Switch] $RestoreToDbFolder,
    [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
    [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
-   [Parameter(Mandatory=$false)][string]$LogFilePath="U:\Databases\Audit\DatabaseShipping_myServer_{DateTime}.txt"
+   [Parameter(Mandatory=$false)][string]$LogFilePath="U:\Databases\Audit\DatabaseShipping_myServer_{DateTime}.txt",
+   [Switch] $RestoreDbToSameFolderName
    )
 #---------------------------------------------------------FUNCTIONS
 Function Get-FunctionName ([int]$StackNumber = 1) { #Create Log Table if not exists
@@ -433,6 +433,58 @@ Function Database.GetDefaultDbFolderLocations {  #Get default location of data f
     if ($null -ne $myRecord) {$myAnswer=$myRecord.Path} else {$myAnswer=$null}
     return $myAnswer
 }
+Function Database.CreateFolder {  #Create folder via TSQL
+    Param
+        (
+        [Parameter(Mandatory=$true)][string]$ConnectionString,
+        [Parameter(Mandatory=$true)][string]$FolderPath
+        )
+
+    Write-Log -LogToTable:$myLogToTable -Type INF -Content "Processing Started."
+    $myCommand="
+        USE [master];
+        DECLARE @DirectoryPath nvarchar(4000);
+        DECLARE @folder_exists INT;
+        DECLARE @file_results TABLE (
+                                    file_exists int,
+                                    file_is_a_directory int,
+                                    parent_directory_exists int
+                                    )
+             
+        SET @DirectoryPath = N'" + $FolderPath + "';
+        INSERT INTO @file_results (file_exists, file_is_a_directory, parent_directory_exists) EXEC master.dbo.xp_fileexist @DirectoryPath
+        SELECT @folder_exists = file_is_a_directory FROM @file_results
+    
+        --script to create directory
+        IF @folder_exists = 0
+            BEGIN
+                BEGIN TRY
+                    print 'Directory is not exists, creating new one'
+                    EXECUTE master.dbo.xp_create_subdir @DirectoryPath
+                    print @DirectoryPath +  'created on' + @@servername
+                    SELECT 1 AS Result
+                END TRY
+                BEGIN CATCH
+                    DECLARE @CustomMessage nvarchar(255)
+                    SET @CustomMessage='Creating folder error on ' + @DirectoryPath
+                    PRINT @CustomMessage
+                    SELECT 0 AS Result
+                END CATCH
+            END
+            ELSE
+            BRGIN
+                PRINT @DirectoryPath + 'Directory already exists'
+                SELECT 1 AS Result
+            END
+        "
+    try{
+        $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+    }Catch{
+        Write-Log -LogToTable:$myLogToTable -Type ERR -Content ($_.ToString()).ToString()
+    }
+    if ($null -ne $myRecord) {$myAnswer=$myRecord.Path} else {$myAnswer=$null}
+    return $myAnswer
+}
 Function Database.RecoverDatabase {  #Recover database
     Param
         (
@@ -648,11 +700,21 @@ If ($null -eq $myDefaultDestinationDataFolderLocation){
 If ($null -eq $myDefaultDestinationLogFolderLocation){
     Write-Log -Type ERR -Content ("Default Log folder location is empty on: " + $DestinationInstanceConnectionString) -Terminate
 }
-Write-Log -Type INF -Content ("Generate RestoreLocation")
-if ($RestoreToDbFolder) {
-    $myDefaultDestinationDataFolderLocation += $DestinationDB + "\"
-    $myDefaultDestinationLogFolderLocation += $DestinationDB + "\"
+
+Write-Log -Type INF -Content ("Calculate RestoreLocation Folder")
+if ($RestoreDbToSameFolderName) {
+    $myDefaultDestinationDataFolderLocation += $DestinationDB.Replace(" ","_") + "\"
+    $myDefaultDestinationLogFolderLocation += $DestinationDB.Replace(" ","_") + "\"
 }
+
+Write-Log -Type INF -Content ("Data file RestoreLocation folder is " + $myDefaultDestinationDataFolderLocation)
+Write-Log -Type INF -Content ("Log file RestoreLocation folder is " + $myDefaultDestinationLogFolderLocation)
+
+Write-Log -Type INF -Content ("Create RestoreLocation folders, if not exists.")
+Database.CreateFolder -ConnectionString $DestinationInstanceConnectionString -FolderPath $myDefaultDestinationDataFolderLocation
+Database.CreateFolder -ConnectionString $DestinationInstanceConnectionString -FolderPath $myDefaultDestinationLogFolderLocation
+
+Write-Log -Type INF -Content ("Generate RestoreLocation")
 $myDelimiter=","
 if ($myBackupFileList.Count -eq 1) {
     $myMediasetId=$myBackupFileList.MediaSetId
