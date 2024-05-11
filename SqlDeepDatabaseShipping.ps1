@@ -17,6 +17,7 @@ Param(
    [Parameter(Mandatory=$false)][string]$DestinationDB,
    [Parameter(Mandatory=$true)][string]$FileRepositoryUncPath,
    [Parameter(Mandatory=$false)][ValidateSet("RECOVER","RESTOREONLY")][string]$SetDestinationDBToMode="RESTOREONLY",
+   [Switch] $RestoreToDbFolder,
    [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
    [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
    [Parameter(Mandatory=$false)][string]$LogFilePath="U:\Databases\Audit\DatabaseShipping_myServer_{DateTime}.txt"
@@ -645,8 +646,10 @@ If ($null -eq $myDefaultDestinationLogFolderLocation){
     Write-Log -Type ERR -Content ("Default Log folder location is empty on: " + $DestinationInstanceConnectionString) -Terminate
 }
 Write-Log -Type INF -Content ("Generate RestoreLocation")
-$myDefaultDestinationDataFolderLocation += $DestinationDB + "\"
-$myDefaultDestinationLogFolderLocation += $DestinationDB + "\"
+if ($RestoreToDbFolder) {
+    $myDefaultDestinationDataFolderLocation += $DestinationDB + "\"
+    $myDefaultDestinationLogFolderLocation += $DestinationDB + "\"
+}
 $myDelimiter=","
 if ($myBackupFileList.Count -eq 1) {
     $myMediasetId=$myBackupFileList.MediaSetId
