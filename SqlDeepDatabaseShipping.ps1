@@ -310,7 +310,8 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
         [myBackupset].[is_copy_only] = 0
         AND [myBackupset].[type] = 'I'
         AND [myDatabase].[name] = @myDBName
-        AND [myBackupset].[backup_finish_date] <= @myRecoveryDate
+        AND @myRecoveryDate >= [myBackupset].[backup_start_date] 
+		AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
         AND [myBackupset].[first_lsn] >= @myStartLsn
         AND [myBackupset].[first_lsn] >= ISNULL(@myLatestLsn,@myLatestLsn)
     ORDER BY 
@@ -342,7 +343,8 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
         [myBackupset].[is_copy_only] = 0
         AND [myBackupset].[type] = 'L'
         AND [myDatabase].[name] = @myDBName
-        AND [myBackupset].[backup_start_date] <= @myRecoveryDate
+        AND @myRecoveryDate >= [myBackupset].[backup_start_date] 
+		AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
         --AND [myBackupset].[first_lsn] >= @myLatestLsn
 		AND (
             [myBackupset].[first_lsn] >= ISNULL(@myStartLsn,@myLatestLsn) 
@@ -643,6 +645,8 @@ If ($null -eq $myDefaultDestinationLogFolderLocation){
     Write-Log -Type ERR -Content ("Default Log folder location is empty on: " + $DestinationInstanceConnectionString) -Terminate
 }
 Write-Log -Type INF -Content ("Generate RestoreLocation")
+$myDefaultDestinationDataFolderLocation += $DestinationDB + "\"
+$myDefaultDestinationLogFolderLocation += $DestinationDB + "\"
 $myDelimiter=","
 if ($myBackupFileList.Count -eq 1) {
     $myMediasetId=$myBackupFileList.MediaSetId
