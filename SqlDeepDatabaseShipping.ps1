@@ -214,7 +214,8 @@ Function Database.GetDatabaseLSN {  #Get database latest LSN
     $myCommand="
         USE [master];
         SELECT TOP 1
-            [myDatabaseLsn].[redo_start_lsn] AS LastLsn
+            [myDatabaseLsn].[redo_start_lsn] AS LastLsn,
+            [myDatabaseLsn].[differential_base_lsn] AS DiffBackupBaseLsn
         FROM 
             [master].[sys].[databases] AS myDatabase
             INNER JOIN [master].[sys].[master_files] AS myDatabaseLsn ON [myDatabase].[database_id]=[myDatabaseLsn].[database_id]
@@ -228,138 +229,734 @@ Function Database.GetDatabaseLSN {  #Get database latest LSN
     }Catch{
         Write-Log -LogToTable:$myLogToTable -Type ERR -Content ($_.ToString()).ToString()
     }
-    if ($null -ne $myRecord) {$myAnswer=$myRecord.LastLsn} else {$myAnswer=-1}
+    if ($null -ne $myRecord) {$myAnswer = New-Object PsObject -Property @{LastLsn = $myRecord.LastLsn; DiffBackupBaseLsn = $myRecord.DiffBackupBaseLsn;}} else {$myAnswer = New-Object PsObject -Property @{LastLsn = -1; DiffBackupBaseLsn = -1;}}
     return $myAnswer
 }
 Function Database.GetBackupFileList {    #Get List of backup files combination neede to restore
     Param (
         [parameter (Mandatory = $True)][string]$ConnectionString,
         [parameter (Mandatory = $True)][string]$DatabaseName,
-        [parameter (Mandatory = $false)][Decimal]$LatestLSN=0
+        [parameter (Mandatory = $false)][Decimal]$LatestLSN=0,
+        [parameter (Mandatory = $false)][Decimal]$DiffBackupBaseLsn=0
     )
     $myCommand = "
+    USE [tempdb];
+    DECLARE @myDBName AS NVARCHAR(255);
+    DECLARE @myLatestLsn NUMERIC(25,0);
+    DECLARE @myDiffBackupBaseLsn NUMERIC(25,0);
     DECLARE @myRecoveryDate AS NVARCHAR(50);
-    DECLARE @myDBName AS NVARCHAR(255);    
-    DECLARE @myLatestLsn NUMERIC(25, 0);
-    DECLARE @myStartLsn NUMERIC(25, 0);
-
+    SET @myDBName=N'"+ $DatabaseName + "';
+    SET @myLatestLsn="+ $LatestLSN.ToString() + ";
+    SET @myDiffBackupBaseLsn="+ $DiffBackupBaseLsn.ToString() + ";
     SET @myRecoveryDate = getdate();
-    SET @myDBName = N'"+ $DatabaseName + "';
-    SET @myLatestLsn = "+ $LatestLSN.ToString() + ";
-
+    -------------------------------------------Create required functions in tempdb
+    IF NOT EXISTS (SELECT 1 FROM [tempdb].[sys].[all_objects] WHERE type='FN' AND name = 'fn_FileExists')
+    BEGIN
+        DECLARE @myStatement NVARCHAR(MAX);
+        SET @myStatement = N'
+            CREATE FUNCTION dbo.fn_FileExists(@path varchar(512))
+            RETURNS BIT
+            AS
+            BEGIN
+                    DECLARE @result INT
+                    EXEC master.dbo.xp_fileexist @path, @result OUTPUT
+                    RETURN cast(@result as bit)
+            END
+        ';
+        EXEC sp_executesql @myStatement;
+    END
+    -------------------------------------------Extract Files with Grater than or equal LSN
     CREATE TABLE #myResult
     (
         ID INT IDENTITY,
         DatabaseName sysname,
-        FILEPATH NVARCHAR(255),
+        Position INT,
+        BackupStartTime DATETIME,
+        BackupFinishTime DATETIME,
+        FirstLsn NUMERIC(25, 0),
+        LastLsn NUMERIC(25, 0),
+        CheckpointLsn NUMERIC(25, 0),
+        DatabaseBackupLsn NUMERIC(25, 0),
+        BackupType CHAR(1),
+        MediaSetId INT,
+        BackupFileCount INT,
+        BackupFileSizeMB BIGINT,
+        StrategyNo Tinyint,
+        IsContiguous BIT
+    );
+    CREATE TABLE #myRoadMaps
+    (
+        ID INT,
+        DatabaseName sysname,
         Position INT,
         BackupStartTime DATETIME,
         BackupFinishTime DATETIME,
         FirstLsn NUMERIC(25, 0),
         LastLsn NUMERIC(25, 0),
         BackupType CHAR(1),
-        MediaSetId INT
+        MediaSetId INT,
+        BackupFileCount INT,
+        BackupFileSizeMB BIGINT,
+        StrategyNo Tinyint,
+        ParentID INT,
+        [Level] INT,
+        Cost REAL,
     );
-    -------------------------------------------Full Backup
-    INSERT INTO #myResult
-    (DatabaseName, FILEPATH, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId)
-    SELECT TOP 1 WITH TIES
-        [myDatabase].[name] AS DatabaseName,
-        [myBackupFamily].[physical_device_name] AS myLogPath,
-        [myBackupset].[position],
-        [myBackupset].[backup_start_date],
-        [myBackupset].[backup_finish_date],
-        [myBackupset].[first_lsn],
-        [myBackupset].[last_lsn],
-        [myBackupset].[type],
-        [myBackupset].[media_set_id]
-    FROM
-        [master].[sys].[databases] AS myDatabase WITH (READPAST)
-		INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
-        INNER JOIN [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST) ON [myBackupFamily].[media_set_id] = [myBackupset].[media_set_id]
-    WHERE 
-        [myBackupset].[is_copy_only] = 0
-        AND [myBackupset].[type] = 'D'
-        AND [myDatabase].[name] = @myDBName 
-        AND [myBackupset].[first_lsn] >= @myLatestLsn
-        AND @myRecoveryDate >= [myBackupset].[backup_start_date] 
-        AND [myBackupset].[backup_finish_date] IS NOT NULL
-		--AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
-    ORDER BY 
-        [myBackupset].[backup_start_date] DESC;
-    -------------------------------------------Diff Backup
-    SET @myStartLsn =
+    CREATE TABLE #mySolutions
     (
-        SELECT MAX(FirstLsn) AS myStartLsn FROM #myResult WHERE BackupType = 'D'
+        RoamapID INT IDENTITY,
+        LogID INT,
+        DiffID INT,
+        FullID INT,
+        RoadmapStartTime DATETIME,
+        RoadmapFinishTime DATETIME,
+        RoadmapFirstLsn NUMERIC(25, 0),
+        RoadmapLastLsn NUMERIC(25, 0),
+        RoadmapSizeMB REAL,
+        RoadmapFileCount INT,
+        StrategyNo Tinyint
     );
-    INSERT INTO #myResult
-    (DatabaseName, FILEPATH, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId)
-    SELECT TOP 1 WITH TIES
-        [myDatabase].[name] AS DatabaseName,
-        [myBackupFamily].[physical_device_name] AS myLogPath,
-        [myBackupset].[position],
-        [myBackupset].[backup_start_date],
-        [myBackupset].[backup_finish_date],
-        [myBackupset].[first_lsn],
-        [myBackupset].[last_lsn],
-        [myBackupset].[type],
-        [myBackupset].[media_set_id]
-    FROM
-        [master].[sys].[databases] AS myDatabase WITH (READPAST)
-        INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
-        INNER JOIN [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST) ON [myBackupFamily].[media_set_id] = [myBackupset].[media_set_id]
-    WHERE 
-        [myBackupset].[is_copy_only] = 0
-        AND [myBackupset].[type] = 'I'
-        AND [myDatabase].[name] = @myDBName
-        AND @myRecoveryDate >= [myBackupset].[backup_start_date] 
-        AND [myBackupset].[backup_finish_date] IS NOT NULL
-		--AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
-        AND [myBackupset].[first_lsn] >= @myStartLsn
-        AND [myBackupset].[first_lsn] >= ISNULL(@myLatestLsn,@myLatestLsn)
-    ORDER BY 
-        [myBackupset].[first_lsn] DESC;
-    -------------------------------------------Log Backup
-    SET @myStartLsn =
-    (
-        SELECT MAX(FirstLsn) AS myStartLsn
-        FROM #myResult
-        WHERE BackupType IN ( 'D', 'I' )
-    );
-    INSERT INTO #myResult
-    (DatabaseName,FILEPATH, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId)
-    SELECT
-        [myDatabase].[name] AS DatabaseName,
-        [myBackupFamily].[physical_device_name] AS myLogPath,
-        [myBackupset].[position],
-        [myBackupset].[backup_start_date],
-        [myBackupset].[backup_finish_date],
-        [myBackupset].[first_lsn],
-        [myBackupset].[last_lsn],
-        [myBackupset].[type],
-        [myBackupset].[media_set_id]
-    FROM
-        [master].[sys].[databases] AS myDatabase WITH (READPAST)
-        INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
-        INNER JOIN [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST) ON [myBackupFamily].[media_set_id] = [myBackupset].[media_set_id]
-    WHERE 
-        [myBackupset].[is_copy_only] = 0
-        AND [myBackupset].[type] = 'L'
-        AND [myDatabase].[name] = @myDBName
-        AND @myRecoveryDate >= [myBackupset].[backup_start_date] 
-        AND [myBackupset].[backup_finish_date] IS NOT NULL
-		--AND @myRecoveryDate >= [myBackupset].[backup_finish_date]
-        --AND [myBackupset].[first_lsn] >= @myLatestLsn
-		AND (
-            [myBackupset].[first_lsn] >= ISNULL(@myStartLsn,@myLatestLsn) 
-            OR 
-            ISNULL(@myStartLsn,@myLatestLsn) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
+    --========================================
+    --========================================1st strategy: All latest existed full backup + latest existed and related incremental backup + all log backups after that incremental backup
+    --========================================
+    ----------------------Step1.1:	Extract all existed full backups
+        TRUNCATE TABLE #myResult
+        INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+        SELECT
+            [myDatabase].[name] AS DatabaseName,
+            [myBackupset].[position],
+            [myBackupset].[backup_start_date],
+            [myBackupset].[backup_finish_date],
+            [myBackupset].[first_lsn],
+            [myBackupset].[last_lsn],
+            [myBackupset].[checkpoint_lsn],
+            [myBackupset].[database_backup_lsn],
+            [myBackupset].[type],
+            [myBackupset].[media_set_id],
+            [myMediaIsAvailable].[BackupFileCount],
+            ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+            CAST(1 AS tinyint) AS StrategyNo,
+            1 AS IsContiguous
+        FROM
+            [master].[sys].[databases] AS myDatabase WITH (READPAST)
+            INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+            INNER JOIN (
+                SELECT
+                    [myBackupFamily].[media_set_id],
+                    Count(1) AS BackupFileCount,
+                    CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                FROM
+                    [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                GROUP BY
+                    [myBackupFamily].[media_set_id]
+                ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+        WHERE 
+            [myBackupset].[is_copy_only] = 0
+            AND [myDatabase].[name] = @myDBName
+            AND [myBackupset].[type] = 'D'
+            AND [myBackupset].[backup_finish_date] IS NOT NULL
+            AND [myMediaIsAvailable].[IsFilesExists]=1
+    ----------------------Step1.2:	Extract latest existed and related incremental backups
+    IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=1 AND BackupType='D')
+    BEGIN
+        INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+        SELECT
+            [myDatabase].[name] AS DatabaseName,
+            [myBackupset].[position],
+            [myBackupset].[backup_start_date],
+            [myBackupset].[backup_finish_date],
+            [myBackupset].[first_lsn],
+            [myBackupset].[last_lsn],
+            [myBackupset].[checkpoint_lsn],
+            [myBackupset].[database_backup_lsn],
+            [myBackupset].[type],
+            [myBackupset].[media_set_id],
+            [myMediaIsAvailable].[BackupFileCount],
+            ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+            CAST(1 AS tinyint) AS StrategyNo,
+            1 AS IsContiguous
+        FROM
+            [master].[sys].[databases] AS myDatabase WITH (READPAST)
+            INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+            INNER JOIN #myResult AS myFullBackupsList ON [myFullBackupsList].[CheckpointLsn]=[myBackupset].[database_backup_lsn] AND [myFullBackupsList].[StrategyNo]=1
+            INNER JOIN (
+                SELECT
+                    [myBackupFamily].[media_set_id],
+                    Count(1) AS BackupFileCount,
+                    CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                FROM
+                    [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                GROUP BY
+                    [myBackupFamily].[media_set_id]
+                ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+        WHERE 
+            [myBackupset].[is_copy_only] = 0
+            AND [myDatabase].[name] = @myDBName
+            AND [myBackupset].[type] = 'I'
+            AND [myBackupset].[backup_finish_date] IS NOT NULL
+            AND [myMediaIsAvailable].[IsFilesExists]=1
+        DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='D' AND CheckpointLsn NOT IN (SELECT DatabaseBackupLsn FROM #myResult WHERE StrategyNo=1 AND BackupType='I' GROUP BY DatabaseBackupLsn)	--Delete full backups without any available incremental backups
+        IF NOT EXISTS (SELECT 1 FROM #myResult WHERE StrategyNo=1 AND BackupType IN ('D'))
+            DELETE FROM #myResult WHERE StrategyNo=1
+    END
+    ELSE
+        DELETE FROM #myResult WHERE StrategyNo=1
+    ----------------------Step1.3:	Extract all log backups after that incremental backup
+    IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=1)
+    BEGIN
+        INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+        SELECT
+            [myDatabase].[name] AS DatabaseName,
+            [myBackupset].[position],
+            [myBackupset].[backup_start_date],
+            [myBackupset].[backup_finish_date],
+            [myBackupset].[first_lsn],
+            [myBackupset].[last_lsn],
+            [myBackupset].[checkpoint_lsn],
+            [myBackupset].[database_backup_lsn],
+            [myBackupset].[type],
+            [myBackupset].[media_set_id],
+            [myMediaIsAvailable].[BackupFileCount],
+            ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+            CAST(1 AS tinyint) AS StrategyNo,
+            CASE WHEN LAG([myBackupset].[last_lsn],1,0) OVER (Order by [myBackupset].[first_lsn]) = [myBackupset].[first_lsn] THEN 1 ELSE 0 END AS IsContiguous
+        FROM
+            [master].[sys].[databases] AS myDatabase WITH (READPAST)
+            INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+            INNER JOIN (
+                SELECT
+                    [myBackupFamily].[media_set_id],
+                    Count(1) AS BackupFileCount,
+                    CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                FROM
+                    [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                GROUP BY
+                    [myBackupFamily].[media_set_id]
+                ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+        WHERE 
+            [myBackupset].[is_copy_only] = 0
+            AND [myDatabase].[name] = @myDBName
+            AND [myBackupset].[type] = 'L'
+            AND [myBackupset].[backup_finish_date] IS NOT NULL
+            AND [myMediaIsAvailable].[IsFilesExists]=1
+            AND	[myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1)
+        
+        DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=1 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
+        DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='I' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=1 AND BackupType='L')	--Delete differential backups without continious log backup chain
+        DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='D' AND CheckpointLsn NOT IN (SELECT DatabaseBackupLsn FROM #myResult WHERE StrategyNo=1 AND BackupType='I' GROUP BY DatabaseBackupLsn)	--Delete full backups without any available incremental backups
+        IF NOT EXISTS (SELECT 1 FROM #myResult WHERE StrategyNo=1 AND BackupType IN ('D','I'))
+            DELETE FROM #myResult WHERE StrategyNo=1
+    END
+    ELSE
+        DELETE FROM #myResult WHERE StrategyNo=1
+    ----------------------Step1.4:	Generate Roadmaps
+    IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=1)
+    BEGIN
+        ;With myStrategy1 AS (
+            SELECT	--FullBackups
+                [myFullBackups].*,
+                CAST(NULL AS INT) AS [ParentID],
+                CAST(1 AS INT) AS [Level],
+                CAST([myFullBackups].[BackupFileSizeMB] AS REAL) AS Cost
+            FROM 
+                #myResult AS myFullBackups
+            WHERE 
+                [myFullBackups].[StrategyNo]=1 AND [myFullBackups].[BackupType]='D'
+            UNION ALL
+            SELECT	--DiffBackups
+                [myDiffBackups].*,
+                CAST([myFullBackups].[ID] AS INT) AS [ParentID],
+                [myFullBackups].[Level]+1 AS [Level],
+                [myFullBackups].[Cost]+CAST([myDiffBackups].[BackupFileSizeMB] AS REAL) AS Cost
+            FROM 
+                myStrategy1 AS myFullBackups
+                INNER JOIN #myResult AS myDiffBackups ON [myFullBackups].[CheckpointLsn]=[myDiffBackups].[DatabaseBackupLsn]
+            WHERE 
+                [myFullBackups].[StrategyNo]=1 AND [myFullBackups].[BackupType]='D'
+                AND [myDiffBackups].[StrategyNo]=1 AND [myDiffBackups].[BackupType]='I'
+            UNION ALL
+            SELECT	--LogBackups
+                [myLogBackups].*,
+                CAST([myDiffBackups].[ID] AS INT) AS [ParentID],
+                [myDiffBackups].[Level]+1 AS [Level],
+                [myDiffBackups].[Cost]+CAST([myLogBackups].[BackupFileSizeMB] AS REAL) AS Cost
+            FROM 
+                myStrategy1 AS myDiffBackups
+                INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myDiffBackups].[FirstLsn]
+            WHERE 
+                [myDiffBackups].[StrategyNo]=1 AND [myDiffBackups].[BackupType]='I'
+                AND [myLogBackups].[StrategyNo]=1 AND [myLogBackups].[BackupType]='L'
             )
+    
+        INSERT INTO #myRoadMaps (ID, DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, ParentID, [Level], Cost)
+        SELECT ID,DatabaseName,Position,BackupStartTime,BackupFinishTime,FirstLsn,LastLsn,BackupType,MediaSetId,BackupFileCount,BackupFileSizeMB,StrategyNo,ParentID,[Level],Cost FROM myStrategy1 ORDER BY [Level],[ParentID],[ID]
+    
+        INSERT INTO #mySolutions (LogID, DiffID, FullID, RoadmapStartTime, RoadmapFinishTime, RoadmapFirstLsn, RoadmapLastLsn, RoadmapSizeMB, RoadmapFileCount, StrategyNo)
+        SELECT 
+            [myLog].[ID] AS LogID,
+            [myDiff].[ID] AS DiffID,
+            [myFull].[ID] AS FullID,
+            [myFull].[BackupStartTime],
+            [myLog].[BackupFinishTime],
+            [myFull].[FirstLsn],
+            [myLog].[LastLsn],
+            [myLog].[Cost],
+            [myDiff].[BackupFileCount] + [myFull].[BackupFileCount],
+            [myLog].[StrategyNo]
+        FROM 
+            #myRoadMaps AS myLog
+            INNER JOIN #myRoadMaps AS myDiff ON [myLog].[ParentID]=[myDiff].[ID] AND [myDiff].[StrategyNo]=1 AND [myDiff].[BackupType]='I'
+            INNER JOIN #myRoadMaps AS myFull ON [myDiff].[ParentID]=[myFull].[ID] AND [myFull].[StrategyNo]=1 AND [myFull].[BackupType]='D'
+        WHERE 
+            [myLog].[BackupType]='L'
+            AND [myLog].[StrategyNo]=1
+            AND [myLog].[ID]=(SELECT MAX(ID) FROM #myRoadMaps WHERE [StrategyNo]=1 AND [BackupType]='L')
+        UPDATE mySolutions SET RoadmapFileCount=[mySolutions].[RoadmapFileCount]+[myLogFileStats].[LogFileCount] FROM #mySolutions AS mySolutions INNER JOIN (SELECT [ParentID] AS DiffID, SUM([BackupFileCount]) AS LogFileCount FROM #myRoadMaps WHERE BackupType='L' AND StrategyNo=1 GROUP BY [ParentID]) AS myLogFileStats ON [mySolutions].[DiffID]=[myLogFileStats].[DiffID] WHERE [mySolutions].[StrategyNo]=1
+    END
+    ELSE
+        DELETE FROM #myResult WHERE StrategyNo=1
+    --========================================
+    --========================================2nd strategy: All latest existed full backup + all corresponding log backups after that full backup
+    --========================================
+    ----------------------Step2.1:	Extract all existed full backups
+        TRUNCATE TABLE #myResult
+        INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+        SELECT
+            [myDatabase].[name] AS DatabaseName,
+            [myBackupset].[position],
+            [myBackupset].[backup_start_date],
+            [myBackupset].[backup_finish_date],
+            [myBackupset].[first_lsn],
+            [myBackupset].[last_lsn],
+            [myBackupset].[checkpoint_lsn],
+            [myBackupset].[database_backup_lsn],
+            [myBackupset].[type],
+            [myBackupset].[media_set_id],
+            [myMediaIsAvailable].[BackupFileCount],
+            ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+            CAST(2 AS tinyint) AS StrategyNo,
+            1 AS IsContiguous
+        FROM
+            [master].[sys].[databases] AS myDatabase WITH (READPAST)
+            INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+            INNER JOIN (
+                SELECT
+                    [myBackupFamily].[media_set_id],
+                    Count(1) AS BackupFileCount,
+                    CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                FROM
+                    [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                GROUP BY
+                    [myBackupFamily].[media_set_id]
+                ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+        WHERE 
+            [myBackupset].[is_copy_only] = 0
+            AND [myDatabase].[name] = @myDBName
+            AND [myBackupset].[type] = 'D'
+            AND [myBackupset].[backup_finish_date] IS NOT NULL
+            AND [myMediaIsAvailable].[IsFilesExists]=1
+    ----------------------Step2.2:	Extract all log backups after that full backup
+    IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=2)
+    BEGIN
+        INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+        SELECT
+            [myDatabase].[name] AS DatabaseName,
+            [myBackupset].[position],
+            [myBackupset].[backup_start_date],
+            [myBackupset].[backup_finish_date],
+            [myBackupset].[first_lsn],
+            [myBackupset].[last_lsn],
+            [myBackupset].[checkpoint_lsn],
+            [myBackupset].[database_backup_lsn],
+            [myBackupset].[type],
+            [myBackupset].[media_set_id],
+            [myMediaIsAvailable].[BackupFileCount],
+            ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+            CAST(2 AS tinyint) AS StrategyNo,
+            CASE WHEN LAG([myBackupset].[last_lsn],1,0) OVER (Order by [myBackupset].[first_lsn]) = [myBackupset].[first_lsn] THEN 1 ELSE 0 END AS IsContiguous
+        FROM
+            [master].[sys].[databases] AS myDatabase WITH (READPAST)
+            INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+            INNER JOIN (
+                SELECT
+                    [myBackupFamily].[media_set_id],
+                    Count(1) AS BackupFileCount,
+                    CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                FROM
+                    [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                GROUP BY
+                    [myBackupFamily].[media_set_id]
+                ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+        WHERE 
+            [myBackupset].[is_copy_only] = 0
+            AND [myDatabase].[name] = @myDBName
+            AND [myBackupset].[type] = 'L'
+            AND [myBackupset].[backup_finish_date] IS NOT NULL
+            AND [myMediaIsAvailable].[IsFilesExists]=1
+            AND	[myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2)
+        
+        DELETE FROM #myResult WHERE StrategyNo=2 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=2 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
+        DELETE FROM #myResult WHERE StrategyNo=2 AND BackupType='D' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=2 AND BackupType='L')	--Delete full backups without continious log backup chain
+        IF NOT EXISTS (SELECT 1 FROM #myResult WHERE StrategyNo=2 AND BackupType IN ('D'))
+            DELETE FROM #myResult WHERE StrategyNo=2
+    END
+    ELSE
+        DELETE FROM #myResult WHERE StrategyNo=2
+    ----------------------Step2.3:	Generate Roadmaps
+    IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=2)
+    BEGIN
+        ;With myStrategy2 AS (
+            SELECT	--FullBackups
+                [myFullBackups].*,
+                CAST(NULL AS INT) AS [ParentID],
+                CAST(1 AS INT) AS [Level],
+                CAST([myFullBackups].[BackupFileSizeMB] AS REAL) AS Cost
+            FROM 
+                #myResult AS myFullBackups
+            WHERE 
+                [myFullBackups].[StrategyNo]=2 AND [myFullBackups].[BackupType]='D'
+            UNION ALL
+            SELECT	--LogBackups
+                [myLogBackups].*,
+                CAST([myFullBackups].[ID] AS INT) AS [ParentID],
+                [myFullBackups].[Level]+1 AS [Level],
+                [myFullBackups].[Cost]+CAST([myLogBackups].[BackupFileSizeMB] AS REAL) AS Cost
+            FROM 
+                myStrategy2 AS myFullBackups
+                INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myFullBackups].[FirstLsn]
+            WHERE 
+                [myFullBackups].[StrategyNo]=2 AND [myFullBackups].[BackupType]='D'
+                AND [myFullBackups].[StrategyNo]=2 AND [myLogBackups].[BackupType]='L'
+            )
+    
+        INSERT INTO #myRoadMaps (ID, DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, ParentID, [Level], Cost)
+        SELECT ID,DatabaseName,Position,BackupStartTime,BackupFinishTime,FirstLsn,LastLsn,BackupType,MediaSetId,BackupFileCount,BackupFileSizeMB,StrategyNo,ParentID,[Level],Cost FROM myStrategy2 ORDER BY [Level],[ParentID],[ID]
+    
+        INSERT INTO #mySolutions (LogID, DiffID, FullID, RoadmapStartTime, RoadmapFinishTime, RoadmapFirstLsn, RoadmapLastLsn, RoadmapSizeMB, RoadmapFileCount, StrategyNo)
+        SELECT 
+            [myLog].[ID] AS LogID,
+            NULL AS DiffID,
+            [myFull].[ID] AS FullID,
+            [myFull].[BackupStartTime],
+            [myLog].[BackupFinishTime],
+            [myFull].[FirstLsn],
+            [myLog].[LastLsn],
+            [myLog].[Cost],
+            [myFull].[BackupFileCount],
+            [myLog].[StrategyNo]
+        FROM 
+            #myRoadMaps AS myLog
+            INNER JOIN #myRoadMaps AS myFull ON [myLog].[ParentID]=[myFull].[ID] AND [myFull].[StrategyNo]=2 AND [myFull].[BackupType]='D'
+        WHERE 
+            [myLog].[BackupType]='L'
+            AND [myLog].[StrategyNo]=2
+            AND [myLog].[ID]=(SELECT MAX(ID) FROM #myRoadMaps WHERE [StrategyNo]=2 AND [BackupType]='L')
+        UPDATE mySolutions SET RoadmapFileCount=[mySolutions].[RoadmapFileCount]+[myLogFileStats].[LogFileCount] FROM #mySolutions AS mySolutions INNER JOIN (SELECT [ParentID] AS FullID, SUM([BackupFileCount]) AS LogFileCount FROM #myRoadMaps WHERE BackupType='L' AND StrategyNo=2 GROUP BY [ParentID]) AS myLogFileStats ON [mySolutions].[FullID]=[myLogFileStats].[FullID] WHERE [mySolutions].[StrategyNo]=2
+    END
+    ELSE
+        DELETE FROM #myResult WHERE StrategyNo=2
+    --========================================
+    --========================================3rd strategy: Latest existed and related incremental backup + all corresponding log backups after that incremental backup
+    --========================================
+    ----------------------Step3.1:	Extract latest existed and related incremental backups
+        TRUNCATE TABLE #myResult
+        INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+        SELECT
+            [myDatabase].[name] AS DatabaseName,
+            [myBackupset].[position],
+            [myBackupset].[backup_start_date],
+            [myBackupset].[backup_finish_date],
+            [myBackupset].[first_lsn],
+            [myBackupset].[last_lsn],
+            [myBackupset].[checkpoint_lsn],
+            [myBackupset].[database_backup_lsn],
+            [myBackupset].[type],
+            [myBackupset].[media_set_id],
+            [myMediaIsAvailable].[BackupFileCount],
+            ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+            CAST(3 AS tinyint) AS StrategyNo,
+            1 AS IsContiguous
+        FROM
+            [master].[sys].[databases] AS myDatabase WITH (READPAST)
+            INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+            INNER JOIN (
+                SELECT
+                    [myBackupFamily].[media_set_id],
+                    Count(1) AS BackupFileCount,
+                    CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                FROM
+                    [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                GROUP BY
+                    [myBackupFamily].[media_set_id]
+                ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+        WHERE 
+            [myBackupset].[is_copy_only] = 0
+            AND [myDatabase].[name] = @myDBName
+            AND [myBackupset].[type] = 'I'
+            AND [myBackupset].[backup_finish_date] IS NOT NULL
+            AND [myMediaIsAvailable].[IsFilesExists]=1
+            AND [myBackupset].[database_backup_lsn]=@myDiffBackupBaseLsn
+    ----------------------Step3.2:	Extract all log backups after that incremental backup
+    IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=3)
+    BEGIN
+        INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+        SELECT
+            [myDatabase].[name] AS DatabaseName,
+            [myBackupset].[position],
+            [myBackupset].[backup_start_date],
+            [myBackupset].[backup_finish_date],
+            [myBackupset].[first_lsn],
+            [myBackupset].[last_lsn],
+            [myBackupset].[checkpoint_lsn],
+            [myBackupset].[database_backup_lsn],
+            [myBackupset].[type],
+            [myBackupset].[media_set_id],
+            [myMediaIsAvailable].[BackupFileCount],
+            ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+            CAST(3 AS tinyint) AS StrategyNo,
+            CASE WHEN LAG([myBackupset].[last_lsn],1,0) OVER (Order by [myBackupset].[first_lsn]) = [myBackupset].[first_lsn] THEN 1 ELSE 0 END AS IsContiguous
+        FROM
+            [master].[sys].[databases] AS myDatabase WITH (READPAST)
+            INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+            INNER JOIN (
+                SELECT
+                    [myBackupFamily].[media_set_id],
+                    Count(1) AS BackupFileCount,
+                    CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                FROM
+                    [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                GROUP BY
+                    [myBackupFamily].[media_set_id]
+                ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+        WHERE 
+            [myBackupset].[is_copy_only] = 0
+            AND [myDatabase].[name] = @myDBName
+            AND [myBackupset].[type] = 'L'
+            AND [myBackupset].[backup_finish_date] IS NOT NULL
+            AND [myMediaIsAvailable].[IsFilesExists]=1
+            AND	[myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=3)
+        
+        DELETE FROM #myResult WHERE StrategyNo=3 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=3 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
+        DELETE FROM #myResult WHERE StrategyNo=3 AND BackupType='I' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=3 AND BackupType='L')	--Delete differential backups without continious log backup chain
+        IF NOT EXISTS (SELECT 1 FROM #myResult WHERE StrategyNo=3 AND BackupType IN ('I'))
+            DELETE FROM #myResult WHERE StrategyNo=3
+    END
+    ELSE
+        DELETE FROM #myResult WHERE StrategyNo=3
+    ----------------------Step3.3:	Generate Roadmaps
+    IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=3)
+    BEGIN
+        ;With myStrategy3 AS (
+            SELECT	--DiffBackups
+                [myDiffBackups].*,
+                CAST(NULL AS INT) AS [ParentID],
+                CAST(1 AS INT) AS [Level],
+                CAST([myDiffBackups].[BackupFileSizeMB] AS REAL) AS Cost
+            FROM 
+                #myResult AS myDiffBackups
+            WHERE 
+                [myDiffBackups].[StrategyNo]=3 AND [myDiffBackups].[BackupType]='I'
+            UNION ALL
+            SELECT	--LogBackups
+                [myLogBackups].*,
+                CAST([myDiffBackups].[ID] AS INT) AS [ParentID],
+                [myDiffBackups].[Level]+1 AS [Level],
+                [myDiffBackups].[Cost]+CAST([myLogBackups].[BackupFileSizeMB] AS REAL) AS Cost
+            FROM 
+                myStrategy3 AS myDiffBackups
+                INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myDiffBackups].[FirstLsn]
+            WHERE 
+                [myDiffBackups].[StrategyNo]=3 AND [myDiffBackups].[BackupType]='I'
+                AND [myLogBackups].[StrategyNo]=3 AND [myLogBackups].[BackupType]='L'
+            )
+    
+        INSERT INTO #myRoadMaps (ID, DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, ParentID, [Level], Cost)
+        SELECT ID,DatabaseName,Position,BackupStartTime,BackupFinishTime,FirstLsn,LastLsn,BackupType,MediaSetId,BackupFileCount,BackupFileSizeMB,StrategyNo,ParentID,[Level],Cost FROM myStrategy3 ORDER BY [Level],[ParentID],[ID]
+    
+        INSERT INTO #mySolutions (LogID, DiffID, FullID, RoadmapStartTime, RoadmapFinishTime, RoadmapFirstLsn, RoadmapLastLsn, RoadmapSizeMB, RoadmapFileCount, StrategyNo)
+        SELECT 
+            [myLog].[ID] AS LogID,
+            [myDiff].[ID] AS DiffID,
+            NULL AS FullID,
+            [myDiff].[BackupStartTime],
+            [myLog].[BackupFinishTime],
+            [myDiff].[FirstLsn],
+            [myLog].[LastLsn],
+            [myLog].[Cost],
+            [myDiff].[BackupFileCount],
+            [myLog].[StrategyNo]
+        FROM 
+            #myRoadMaps AS myLog
+            INNER JOIN #myRoadMaps AS myDiff ON [myLog].[ParentID]=[myDiff].[ID] AND [myDiff].[StrategyNo]=3 AND [myDiff].[BackupType]='I'
+        WHERE 
+            [myLog].[BackupType]='L'
+            AND [myLog].[StrategyNo]=3
+            AND [myLog].[ID]=(SELECT MAX(ID) FROM #myRoadMaps WHERE [StrategyNo]=3 AND [BackupType]='L')
+        UPDATE mySolutions SET RoadmapFileCount=[mySolutions].[RoadmapFileCount]+[myLogFileStats].[LogFileCount] FROM #mySolutions AS mySolutions INNER JOIN (SELECT [ParentID] AS DiffID, SUM([BackupFileCount]) AS LogFileCount FROM #myRoadMaps WHERE BackupType='L' AND StrategyNo=3 GROUP BY [ParentID]) AS myLogFileStats ON [mySolutions].[DiffID]=[myLogFileStats].[DiffID] WHERE [mySolutions].[StrategyNo]=3
+        DELETE FROM #mySolutions WHERE StrategyNo=3 AND @myDiffBackupBaseLsn NOT BETWEEN RoadmapFirstLsn AND RoadmapLastLsn	--Delete outdated LSN solutions
+    END
+    ELSE
+        DELETE FROM #myResult WHERE StrategyNo=3
+    --========================================
+    --========================================4th strategy: All log backups after announced LSN
+    --========================================
+    ----------------------Step4.1:	Extract all log backups after specified LatestLSN
+        TRUNCATE TABLE #myResult
+        INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+        SELECT
+            [myDatabase].[name] AS DatabaseName,
+            [myBackupset].[position],
+            [myBackupset].[backup_start_date],
+            [myBackupset].[backup_finish_date],
+            [myBackupset].[first_lsn],
+            [myBackupset].[last_lsn],
+            [myBackupset].[checkpoint_lsn],
+            [myBackupset].[database_backup_lsn],
+            [myBackupset].[type],
+            [myBackupset].[media_set_id],
+            [myMediaIsAvailable].[BackupFileCount],
+            ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+            CAST(4 AS tinyint) AS StrategyNo,
+            CASE WHEN LAG([myBackupset].[last_lsn],1,[myBackupset].[first_lsn]) OVER (Order by [myBackupset].[first_lsn]) = [myBackupset].[first_lsn] THEN 1 ELSE 0 END AS IsContiguous
+        FROM
+            [master].[sys].[databases] AS myDatabase WITH (READPAST)
+            INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+            INNER JOIN (
+                SELECT
+                    [myBackupFamily].[media_set_id],
+                    Count(1) AS BackupFileCount,
+                    CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                FROM
+                    [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                GROUP BY
+                    [myBackupFamily].[media_set_id]
+                ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+        WHERE 
+            [myBackupset].[is_copy_only] = 0
+            AND [myDatabase].[name] = @myDBName
+            AND [myBackupset].[type] = 'L'
+            AND [myBackupset].[backup_finish_date] IS NOT NULL
+            AND [myMediaIsAvailable].[IsFilesExists]=1
+            AND	(
+                @myLatestLsn BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
+                OR
+                [myBackupset].[first_lsn] >= @myLatestLsn
+                )
+        
+        DELETE FROM #myResult WHERE StrategyNo=4 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=4 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
+    ----------------------Step4.2:	Generate Roadmaps
+    IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=4)
+    BEGIN
+        ;With myStrategy4 AS (
+            SELECT	--LogBackups
+                [myLogBackups].*,
+                CAST(NULL AS INT) AS [ParentID],
+                CAST(1 AS INT) AS [Level],
+                CAST([myLogBackups].[BackupFileSizeMB] AS REAL) AS Cost
+            FROM 
+                #myResult AS myLogBackups
+            WHERE 
+                [myLogBackups].[StrategyNo]=4 AND [myLogBackups].[BackupType]='L'
+            )
+    
+        INSERT INTO #myRoadMaps (ID, DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, ParentID, [Level], Cost)
+        SELECT ID,DatabaseName,Position,BackupStartTime,BackupFinishTime,FirstLsn,LastLsn,BackupType,MediaSetId,BackupFileCount,BackupFileSizeMB,StrategyNo,ParentID,[Level],Cost FROM myStrategy4 ORDER BY [Level],[ParentID],[ID]
+    
+        IF EXISTS(SELECT 1 FROM #myRoadMaps WHERE [BackupType]='L' AND [StrategyNo]=4)
+        BEGIN
+            INSERT INTO #mySolutions (LogID, DiffID, FullID, RoadmapStartTime, RoadmapFinishTime, RoadmapFirstLsn, RoadmapLastLsn, RoadmapSizeMB, RoadmapFileCount, StrategyNo)
+            SELECT 
+                MAX([myLog].[ID]) AS LogID,
+                NULL AS DiffID,
+                NULL AS FullID,
+                MIN([myLog].[BackupStartTime]),
+                MAX([myLog].[BackupFinishTime]),
+                MIN([myLog].[FirstLsn]),
+                MAX([myLog].[LastLsn]),
+                MAX([myLog].[Cost]),
+                SUM([myLog].[BackupFileCount]),
+                MIN([myLog].[StrategyNo])
+            FROM 
+                #myRoadMaps AS myLog
+            WHERE 
+                [myLog].[BackupType]='L'
+                AND [myLog].[StrategyNo]=4
+        END
+        DELETE FROM #mySolutions WHERE StrategyNo=4 AND @myLatestLsn NOT BETWEEN RoadmapFirstLsn AND RoadmapLastLsn	--Delete outdated LSN solutions
+    END
+    ELSE
+        DELETE FROM #myResult WHERE StrategyNo=4
+    --========================================
+    --========================================Elect and show best solution strategy based on possible solutions cost(cost is equal to total size of reuired files in MB->RoadmapSizeMB)
+    --========================================
+    DECLARE @myStrategyNo TINYINT
+    DECLARE @myFullID INT
+    DECLARE @myDiffID INT
+    DECLARE @myLogID INT
+    
+    SELECT * FROM #mySolutions ORDER BY [RoadmapSizeMB], [RoadmapFileCount]
+    SELECT TOP 1 @myStrategyNo=StrategyNo,@myFullID=FullID,@myDiffID=DiffID,@myLogID=LogID FROM #mySolutions ORDER BY [RoadmapSizeMB], [RoadmapFileCount]
+    
+    SELECT
+        [myElectedBackupsets].[StrategyNo],
+        [myElectedBackupsets].[ID],
+        [myElectedBackupsets].[DatabaseName],
+        [myElectedBackupsets].[Position],
+        [myElectedBackupsets].[BackupStartTime],
+        [myElectedBackupsets].[BackupFinishTime],
+        [myElectedBackupsets].[FirstLsn],
+        [myElectedBackupsets].[LastLsn],
+        [myElectedBackupsets].[BackupType],
+        [myElectedBackupsets].[MediaSetId],
+        [myBackupFamily].[physical_device_name] AS FilePath
+    FROM
+        (
+        SELECT * FROM #myRoadMaps
+        WHERE
+            @myStrategyNo=1
+            AND StrategyNo=1
+            AND (
+                BackupType='D' AND ID=@myFullID AND ParentID IS NULL
+                OR
+                BackupType='I' AND ID=@myDiffID AND ParentID=@myFullID
+                OR
+                BackupType='L' AND ParentID=@myDiffID
+                )
+        UNION ALL
+        SELECT * FROM #myRoadMaps
+        WHERE
+            @myStrategyNo=2
+            AND StrategyNo=2
+            AND (
+                BackupType='D' AND ID=@myFullID AND ParentID IS NULL
+                OR
+                BackupType='L' AND ParentID=@myFullID
+                )
+        UNION ALL
+        SELECT * FROM #myRoadMaps
+        WHERE
+            @myStrategyNo=3
+            AND StrategyNo=3
+            AND (
+                BackupType='I' AND ID=@myDiffID AND ParentID IS NULL
+                OR
+                BackupType='L' AND ParentID=@myDiffID
+                )
+        UNION ALL
+        SELECT * FROM #myRoadMaps
+        WHERE
+            @myStrategyNo=4
+            AND StrategyNo=4
+            AND BackupType='L'
+        ) AS myElectedBackupsets
+        INNER JOIN [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST) ON [myBackupFamily].[media_set_id] = [myElectedBackupsets].[MediaSetId]
     ORDER BY 
-        [myBackupset].[first_lsn] ASC;
-  
-    SELECT ID, DatabaseName, FILEPATH, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId FROM #myResult ORDER BY ID;
+        [myElectedBackupsets].[StrategyNo],[myElectedBackupsets].[Level],[myElectedBackupsets].[ParentID],[myElectedBackupsets].[ID],[myBackupFamily].[physical_device_name]
+    
+    DROP TABLE #mySolutions;
+    DROP TABLE #myRoadMaps;
     DROP TABLE #myResult;
+    DROP FUNCTION dbo.fn_FileExists;   
     "
     try{
         $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
@@ -650,13 +1247,17 @@ If (($myDestinationDbStatus -eq [DestinationDbStatus]::Online) -or ($myDestinati
 If (($myDestinationDbStatus -eq [DestinationDbStatus]::Online) -or ($myDestinationDbStatus -eq [DestinationDbStatus]::NotExist)){
     Write-Log -Type INF -Content ("Get DB Backup file combinations, for: " + $DestinationDB)
     $myLatestLSN=0
+    $myDiffBackupBaseLsn=0
 }elseif ($myDestinationDbStatus -eq [DestinationDbStatus]::Restoring) {
     Write-Log -Type INF -Content ("Get DB Backup file combinations, for: " + $DestinationDB)
-    $myLatestLSN=Database.GetDatabaseLSN -ConnectionString $DestinationInstanceConnectionString -DatabaseName $DestinationDB
+    $myLsnAnsers=Database.GetDatabaseLSN -ConnectionString $DestinationInstanceConnectionString -DatabaseName $DestinationDB
+    $myLatestLSN=$myLsnAnsers.LastLsn
+    $myDiffBackupBaseLsn=$myLsnAnsers.DiffBackupBaseLsn
 }
 Write-Log -Type INF -Content ("Latest LSN is: " + $myLatestLSN.ToString())
+Write-Log -Type INF -Content ("DiffBackupBaseLsn is: " + $myDiffBackupBaseLsn.ToString())
 
-$myBackupFileList=Database.GetBackupFileList -ConnectionString $SourceInstanceConnectionString -DatabaseName $SourceDB -LatestLSN $myLatestLSN
+$myBackupFileList=Database.GetBackupFileList -ConnectionString $SourceInstanceConnectionString -DatabaseName $SourceDB -LatestLSN $myLatestLSN -DiffBackupBaseLsn $myDiffBackupBaseLsn
 if ($null -eq $myBackupFileList) {
     Write-Log -Type WRN -Content ("There is nothing(no files) to restore.") -Terminate
 }
