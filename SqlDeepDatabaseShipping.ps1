@@ -901,7 +901,7 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
     DECLARE @myDiffID INT
     DECLARE @myLogID INT
     
-    SELECT * FROM #mySolutions ORDER BY [RoadmapSizeMB], [RoadmapFileCount]
+    --SELECT * FROM #mySolutions ORDER BY [RoadmapSizeMB], [RoadmapFileCount]
     SELECT TOP 1 @myStrategyNo=StrategyNo,@myFullID=FullID,@myDiffID=DiffID,@myLogID=LogID FROM #mySolutions ORDER BY [RoadmapSizeMB], [RoadmapFileCount]
     
     SELECT
