@@ -20,6 +20,7 @@ Param(
    [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
    [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
    [Parameter(Mandatory=$false)][string]$LogFilePath="U:\Databases\Audit\DatabaseShipping_myServer_{DateTime}.txt",
+   [Parameter(Mandatory=$false)][int]$LimitBackupExistenceCheckToNumberOfDays=0,
    [Switch] $RestoreDbToSameFolderName
    )
 #---------------------------------------------------------FUNCTIONS
@@ -245,10 +246,14 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
     DECLARE @myLatestLsn NUMERIC(25,0);
     DECLARE @myDiffBackupBaseLsn NUMERIC(25,0);
     DECLARE @myRecoveryDate AS NVARCHAR(50);
+    DECLARE @myLowerBoundOfFileScan DATETIME;
+    DECLARE @myNumberOfDaysToScan INT;
     SET @myDBName=N'"+ $DatabaseName + "';
     SET @myLatestLsn="+ $LatestLSN.ToString() + ";
     SET @myDiffBackupBaseLsn="+ $DiffBackupBaseLsn.ToString() + ";
+    SET @myNumberOfDaysToScan="+ $LimitBackupExistenceCheckToNumberOfDays.ToSingle() +";
     SET @myRecoveryDate = getdate();
+    SET @myLowerBoundOfFileScan= CASE WHEN @myNumberOfDaysToScan=0 THEN CAST('1753-01-01' AS DATETIME) ELSE CAST(DATEADD(DAY,-1*ABS(@myNumberOfDaysToScan),GETDATE()) AS DATE) END
     -------------------------------------------Create required functions in tempdb
     IF NOT EXISTS (SELECT 1 FROM [tempdb].[sys].[all_objects] WHERE type='FN' AND name = 'fn_FileExists')
     BEGIN
@@ -356,6 +361,7 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
             AND [myBackupset].[type] = 'D'
             AND [myBackupset].[backup_finish_date] IS NOT NULL
             AND [myMediaIsAvailable].[IsFilesExists]=1
+            AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
     ----------------------Step1.2:	Extract latest existed and related incremental backups
     IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=1 AND BackupType='D')
     BEGIN
@@ -555,6 +561,7 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
             AND [myBackupset].[type] = 'D'
             AND [myBackupset].[backup_finish_date] IS NOT NULL
             AND [myMediaIsAvailable].[IsFilesExists]=1
+            AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
     ----------------------Step2.2:	Extract all log backups after that full backup
     IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=2)
     BEGIN
