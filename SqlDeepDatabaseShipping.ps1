@@ -251,7 +251,7 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
     SET @myDBName=N'"+ $DatabaseName + "';
     SET @myLatestLsn="+ $LatestLSN.ToString() + ";
     SET @myDiffBackupBaseLsn="+ $DiffBackupBaseLsn.ToString() + ";
-    SET @myNumberOfDaysToScan="+ $LimitBackupExistenceCheckToNumberOfDays.ToSingle() +";
+    SET @myNumberOfDaysToScan="+ $LimitBackupExistenceCheckToNumberOfDays.ToString() +";
     SET @myRecoveryDate = getdate();
     SET @myLowerBoundOfFileScan= CASE WHEN @myNumberOfDaysToScan=0 THEN CAST('1753-01-01' AS DATETIME) ELSE CAST(DATEADD(DAY,-1*ABS(@myNumberOfDaysToScan),GETDATE()) AS DATE) END
     -------------------------------------------Create required functions in tempdb
