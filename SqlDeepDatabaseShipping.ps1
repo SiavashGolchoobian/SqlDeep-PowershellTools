@@ -1287,6 +1287,7 @@ if ($null -eq $myBackupFileList) {
         $myRestoreStrategy=[RestoreStrategy]($myBackupFileList[0].StrategyNo)
     }
 }
+Write-Log -Type INF -Content ("Selected strategy is: " + $myRestoreStrategy)
 
 #--=======================Copy DB Backup files to FileRepositoryPath
 Write-Log -Type INF -Content ("Get Source instance server name.")
