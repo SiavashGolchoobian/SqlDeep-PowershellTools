@@ -703,6 +703,7 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
             AND [myBackupset].[backup_finish_date] IS NOT NULL
             AND [myMediaIsAvailable].[IsFilesExists]=1
             AND [myBackupset].[database_backup_lsn]=@myDiffBackupBaseLsn
+            AND CASE WHEN @myDiffBackupBaseLsn = 0 THEN @myLowerBoundOfFileScan ELSE [myBackupset].[backup_start_date] END >= @myLowerBoundOfFileScan
     ----------------------Step3.2:	Extract all log backups after that incremental backup
     IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=3)
     BEGIN
@@ -844,6 +845,7 @@ Function Database.GetBackupFileList {    #Get List of backup files combination n
             AND [myBackupset].[type] = 'L'
             AND [myBackupset].[backup_finish_date] IS NOT NULL
             AND [myMediaIsAvailable].[IsFilesExists]=1
+            AND CASE WHEN @myLatestLsn = 0 THEN @myLowerBoundOfFileScan ELSE [myBackupset].[backup_start_date] END >= @myLowerBoundOfFileScan
             AND	(
                 @myLatestLsn BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                 OR
