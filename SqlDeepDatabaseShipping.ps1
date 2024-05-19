@@ -1002,8 +1002,11 @@ Function Database.DropDatabase {  #Drop database
     Write-Log -LogToTable:$myLogToTable -Type INF -Content "Processing Started."
     $myCommand="
         USE [master];
-        ALTER DATABASE [" + $DatabaseName + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-        DROP DATABASE [" + $DatabaseName + "];
+        IF EXISTS (SELECT 1 FROM sys.databases WHERE name=N'"+$DatabaseName+"')
+        BEGIN
+            ALTER DATABASE [" + $DatabaseName + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+            DROP DATABASE [" + $DatabaseName + "];
+        END
         SELECT 1 FROM [master].[sys].[databases] WHERE [name] = '" + $DatabaseName + "'
         "
     try{
@@ -1078,7 +1081,7 @@ Function Database.CreateFolder {  #Create folder via TSQL
                 END CATCH
             END
             ELSE
-            BRGIN
+            BEGIN
                 PRINT @DirectoryPath + 'Directory already exists'
                 SELECT 1 AS Result
             END
@@ -1205,6 +1208,13 @@ enum DestinationDbStatus {
     Copying = 7
     OfflineSecondary = 10
 }
+enum RestoreStrategy {
+    NotExist = 0
+    FullDiffLog = 1
+    FullLog = 2
+    DiffLog = 3
+    Log = 4
+}
 $mySysEventsLogToTableFeature=[bool]$false
 $mySysToday = (Get-Date -Format "yyyyMMdd").ToString()
 $mySysTodayTime = (Get-Date -Format "yyyyMMdd_HHmm").ToString()
@@ -1268,7 +1278,14 @@ Write-Log -Type INF -Content ("DiffBackupBaseLsn is: " + $myDiffBackupBaseLsn.To
 
 $myBackupFileList=Database.GetBackupFileList -ConnectionString $SourceInstanceConnectionString -DatabaseName $SourceDB -LatestLSN $myLatestLSN -DiffBackupBaseLsn $myDiffBackupBaseLsn
 if ($null -eq $myBackupFileList) {
+    $myRestoreStrategy = [RestoreStrategy]::NotExist
     Write-Log -Type WRN -Content ("There is nothing(no files) to restore.") -Terminate
+} else {
+    if ($myBackupFileList.Count -eq 1) {
+        $myRestoreStrategy=[RestoreStrategy]($myBackupFileList.StrategyNo)
+    }else{
+        $myRestoreStrategy=[RestoreStrategy]($myBackupFileList[0].StrategyNo)
+    }
 }
 
 #--=======================Copy DB Backup files to FileRepositoryPath
@@ -1292,7 +1309,7 @@ $myBackupFileList | Add-Member -MemberType ScriptProperty -Name RemoteRepository
 $myBackupFileList | ForEach-Object {Copy-Item -Path ($_.RemoteSourceFilePath) -Destination $FileRepositoryUncPath -Force -ErrorAction Stop; Write-Log -Type INF -Content ("File " + ($_.RemoteSourceFilePath) + " copied to " + $FileRepositoryUncPath)}
 
 #--=======================Drop not in restoring mode databases
-If ($myDestinationDbStatus -eq [DestinationDbStatus]::Online){
+If ($myDestinationDbStatus -eq [DestinationDbStatus]::Online -or $myRestoreStrategy -eq [RestoreStrategy]::FullDiffLog -or $myRestoreStrategy -eq [RestoreStrategy]::FullLog){
     Write-Log -Type INF -Content ("Drop Database : " + $DestinationDB)
     $myExistedDestinationDbDropped=Database.DropDatabase -ConnectionString $DestinationInstanceConnectionString -DatabaseName $DestinationDB
     if ($myExistedDestinationDbDropped -eq $false) {
