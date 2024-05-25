@@ -28,8 +28,8 @@ Class LogWriter {
     [bool]$LogToTable
     [string]$LogInstanceConnectionString
     [string]$LogTableName="[dbo].[Events]"
-    hidden [int]$ErrCount=0
-    hidden [int]$WrnCount=0
+    [int]$ErrCount=0
+    [int]$WrnCount=0
     
     LogWriter(){
         $this.Init($null,"UNKNOWN",$true,$false,$null,$false,$null,$null)
@@ -125,9 +125,9 @@ Class LogWriter {
         [string]$myColor="White"
 
         Switch ($Type) {
-            [LogType]::INF {$myColor="White";$myIsSMS="0"}
-            [LogType]::WRN {$myColor="Yellow";$myIsSMS="1";$mySysWrnCount+=1}
-            [LogType]::ERR {$myColor="Red";$myIsSMS="1";$mySysErrCount+=1}
+            INF {$myColor="White";$myIsSMS="0"}
+            WRN {$myColor="Yellow";$myIsSMS="1";$this.WrnCount+=1}
+            ERR {$myColor="Red";$myIsSMS="1";$this.ErrCount+=1}
             Default {$myColor="White"}
         }
 
