@@ -1,0 +1,4 @@
+enum DatabaseRecoveryMode {
+    RESTOREONLY
+    RECOVERY
+}
