@@ -46,7 +46,6 @@ Class DatabaseShipping {
         $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,$LimitMsdbScanToRecentDays,$RestoreFilesToIndividualFolders,$DestinationRestoreMode,$LogInstanceConnectionString,$LogTableName,$LogFilePath)
     }
     hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[string]$DestinationRestoreMode,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
-        #--=======================Validate input parameters
         $this.SourceInstanceConnectionString=$SourceInstanceConnectionString
         $this.DestinationInstanceConnectionString=$DestinationInstanceConnectionString
         $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($FileRepositoryUncPath)
@@ -1069,8 +1068,18 @@ Class DatabaseShipping {
         $myAnswer = $myRestoreType + " [" + $DatabaseName + "] FROM " + $myBakupFilePaths + " WITH File = " + $Position.ToString() + $myRestoreLocation + ", NORECOVERY, STATS=5;"
         return $myAnswer
     }
-    [void] Ship([string]$SourceDB,[string]$DestinationDB){
+    [void] ShipDatabases([string[]]$SourceDB,[string]$DestinationSuffix){
+        Write-Verbose ("ShipDatabases("+ $SourceDB.Count.ToString() +") with " + $DestinationSuffix + " suffix")
+        [string]$myDestinationDB=$null
+        if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
+        foreach ($mySourceDB in $SourceDB){
+            $myDestinationDB=$mySourceDB+$DestinationSuffix
+            $this.ShipDatabase($mySourceDB,$myDestinationDB)
+        }
+    }
+    [void] ShipDatabase([string]$SourceDB,[string]$DestinationDB){
         #--=======================Initial Log Modules
+        Write-Verbose ("ShipDatabase " + $SourceDB + " as " + $DestinationDB)
         $this.LogFilePath=($this.LogFilePath.Replace("{Database}",$DestinationDB))
         $this.LogWriter=New-LogWriter -EventSource ($env:computername) -Module "DatabaseShipping" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
         $this.LogWriter.Write("Shipping process started...", [LogType]::INF) 
@@ -1246,6 +1255,7 @@ Class DatabaseShipping {
             $this.LogWriter.Write(("Finished with " + $this.LogWriter.ErrCount.ToString() + " and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
         }
     }
+
 #endregion
 }
 #region Functions
