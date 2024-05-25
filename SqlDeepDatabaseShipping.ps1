@@ -1310,10 +1310,10 @@ if ($SetDestinationDBToMode -eq "RECOVER") {
     }
 }
 
-if ($mySysErrCount -eq 0 -and $mySysWrnCount -eq 0) {
+if ($myLogWriter.ErrCount -eq 0 -and $myLogWriter.WrnCount -eq 0) {
     $myLogWriter.Write("Finished.",[LogType]::INF)
-}elseif ($mySysErrCount -eq 0 -and $mySysWrnCount -gt 0) {
-    $myLogWriter.Write(("Finished with " + $mySysWrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
+}elseif ($myLogWriter.ErrCount -eq 0 -and $myLogWriter.WrnCount -gt 0) {
+    $myLogWriter.Write(("Finished with " + $myLogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
 }else{
-    $myLogWriter.Write(("Finished with " + $mySysErrCount.ToString() + " and " + $mySysWrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
+    $myLogWriter.Write(("Finished with " + $myLogWriter.ErrCount.ToString() + " and " + $myLogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
 }
