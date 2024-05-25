@@ -31,9 +31,9 @@ Class DatabaseShipping {
     [string]$SourceInstanceConnectionString
     [string]$DestinationInstanceConnectionString
     [string]$FileRepositoryUncPath
-    [int]$LimitBackupHistoryExistenceCheckToNumberOfDays=0
-    [bool]$StoreToSameFolderAsDestinationDbName=$true
-    [string]$DestinationDbTargetMode="RESTOREONLY"
+    [int]$LimitMsdbScanToRecentDays=0
+    [bool]$RestoreFilesToIndividualFolders=$true
+    [string]$DestinationRestoreMode="RESTOREONLY"
     [string]$LogInstanceConnectionString
     [string]$LogTableName="[dbo].[Events]"
     [string]$LogFilePath
@@ -42,17 +42,17 @@ Class DatabaseShipping {
     DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
         $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,30,$true,"RESTOREONLY",$LogInstanceConnectionString,$LogTableName,$LogFilePath)
     }
-    DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitBackupHistoryExistenceCheckToNumberOfDays,[bool]$StoreToSameFolderAsDestinationDbName,[string]$DestinationDbTargetMode,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
-        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,$LimitBackupHistoryExistenceCheckToNumberOfDays,$StoreToSameFolderAsDestinationDbName,$DestinationDbTargetMode,$LogInstanceConnectionString,$LogTableName,$LogFilePath)
+    DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[string]$DestinationRestoreMode,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
+        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,$LimitMsdbScanToRecentDays,$RestoreFilesToIndividualFolders,$DestinationRestoreMode,$LogInstanceConnectionString,$LogTableName,$LogFilePath)
     }
-    hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitBackupHistoryExistenceCheckToNumberOfDays,[bool]$StoreToSameFolderAsDestinationDbName,[string]$DestinationDbTargetMode,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
+    hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[string]$DestinationRestoreMode,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
         #--=======================Validate input parameters
         $this.SourceInstanceConnectionString=$SourceInstanceConnectionString
         $this.DestinationInstanceConnectionString=$DestinationInstanceConnectionString
         $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($FileRepositoryUncPath)
-        $this.LimitBackupHistoryExistenceCheckToNumberOfDays=$LimitBackupHistoryExistenceCheckToNumberOfDays
-        $this.StoreToSameFolderAsDestinationDbName=$StoreToSameFolderAsDestinationDbName
-        $this.DestinationDbTargetMode=$DestinationDbTargetMode
+        $this.LimitMsdbScanToRecentDays=$LimitMsdbScanToRecentDays
+        $this.RestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
+        $this.DestinationDbTargetMode=$DestinationRestoreMode
         $this.LogInstanceConnectionString=$LogInstanceConnectionString
         $this.LogTableName=$LogTableName
         $this.LogFilePath=$LogFilePath
@@ -175,7 +175,7 @@ Class DatabaseShipping {
         SET @myDBName=N'"+ $DatabaseName + "';
         SET @myLatestLsn="+ $LatestLSN.ToString() + ";
         SET @myDiffBackupBaseLsn="+ $DiffBackupBaseLsn.ToString() + ";
-        SET @myNumberOfDaysToScan="+ $this.LimitBackupHistoryExistenceCheckToNumberOfDays.ToString() +";
+        SET @myNumberOfDaysToScan="+ $this.LimitMsdbScanToRecentDays.ToString() +";
         SET @myRecoveryDate = getdate();
         SET @myLowerBoundOfFileScan= CASE WHEN @myNumberOfDaysToScan=0 THEN CAST('1753-01-01' AS DATETIME) ELSE CAST(DATEADD(DAY,-1*ABS(@myNumberOfDaysToScan),GETDATE()) AS DATE) END
         -------------------------------------------Create required functions in tempdb
@@ -1179,7 +1179,7 @@ Class DatabaseShipping {
         }
 
         $this.LogWriter.Write("Calculate RestoreLocation Folder",[LogType]::INF)
-        if ($this.StoreToSameFolderAsDestinationDbName) {
+        if ($this.RestoreFilesToIndividualFolders) {
             $myDefaultDestinationDataFolderLocation += $DestinationDB.Replace(" ","_") + "\"
             $myDefaultDestinationLogFolderLocation += $DestinationDB.Replace(" ","_") + "\"
         }
@@ -1254,9 +1254,9 @@ Function New-DatabaseShipping {
         [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$DestinationInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$FileRepositoryUncPath,
-        [Parameter(Mandatory=$false)][int]$LimitBackupHistoryExistenceCheckToNumberOfDays=0,
-        [Parameter(Mandatory=$false)][switch]$StoreToSameFolderAsDestinationDbName,
-        [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationDbTargetMode=[DatabaseRecoveryMode]::RESTOREONLY,
+        [Parameter(Mandatory=$false)][int]$LimitMsdbScanToRecentDays=0,
+        [Parameter(Mandatory=$false)][switch]$RestoreFilesToIndividualFolders,
+        [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY,
         [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
         [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
         [Parameter(Mandatory=$true)][string]$LogFilePath
@@ -1265,13 +1265,13 @@ Function New-DatabaseShipping {
     [string]$mySourceInstanceConnectionString=$SourceInstanceConnectionString
     [string]$myDestinationInstanceConnectionString=$DestinationInstanceConnectionString
     [string]$myFileRepositoryUncPath=$FileRepositoryUncPath
-    [int]$myLimitBackupHistoryExistenceCheckToNumberOfDays=$LimitBackupHistoryExistenceCheckToNumberOfDays
-    [bool]$myStoreToSameFolderAsDestinationDbName=$StoreToSameFolderAsDestinationDbName
-    [DatabaseRecoveryMode]$myDestinationDbTargetMode=$DestinationDbTargetMode
+    [int]$myLimitMsdbScanToRecentDays=$LimitMsdbScanToRecentDays
+    [bool]$myRestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
+    [DatabaseRecoveryMode]$myDestinationDbTargetMode=$DestinationRestoreMode
     [string]$myLogInstanceConnectionString=$LogInstanceConnectionString
     [string]$myLogTableName=$LogTableName
     [string]$myLogFilePath=$LogFilePath
-    [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitBackupHistoryExistenceCheckToNumberOfDays,$myStoreToSameFolderAsDestinationDbName,$myDestinationDbTargetMode,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)
+    [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentDays,$myRestoreFilesToIndividualFolders,$myDestinationDbTargetMode,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)
     Write-Verbose "New-DatabaseShipping Created"
 }
 #endregion
