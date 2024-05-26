@@ -1,4 +1,4 @@
-Using module .\SqlDeepDatabaseShipping.psm1
+Using module .\SqlDeepDatabaseShippingEnums.psm1
 Using module .\SqlDeepLogWriterEnums.psm1
 Import-Module .\SqlDeepLogWriter.psm1
 
@@ -24,8 +24,8 @@ enum RestoreStrategy {
     Log = 4
 }
 enum DatabaseFileType {
-    DATA=0
-    LOG=1
+    DATA = 0
+    LOG = 1
 }
 Class DatabaseShipping {
     [string]$SourceInstanceConnectionString
@@ -37,7 +37,7 @@ Class DatabaseShipping {
     [string]$LogInstanceConnectionString
     [string]$LogTableName="[dbo].[Events]"
     [string]$LogFilePath
-    hidden $LogWriter
+    hidden [System.Object]$LogWriter
 
     DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
         $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,30,$true,"RESTOREONLY",$LogInstanceConnectionString,$LogTableName,$LogFilePath)
@@ -51,14 +51,18 @@ Class DatabaseShipping {
         $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($FileRepositoryUncPath)
         $this.LimitMsdbScanToRecentDays=$LimitMsdbScanToRecentDays
         $this.RestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
-        $this.DestinationDbTargetMode=$DestinationRestoreMode
+        $this.DestinationRestoreMode=$DestinationRestoreMode
         $this.LogInstanceConnectionString=$LogInstanceConnectionString
         $this.LogTableName=$LogTableName
         $this.LogFilePath=$LogFilePath
     }
 #region Functions
     hidden [string]Path_CorrectFolderPathFormat ([string]$FolderPath) {    #Correcting folder path format
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF) 
+        if ($this.LogWriter) {
+            $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        } else {
+            Write-Verbose "Processing Started."
+        }
         [string]$myAnswer=$null
         $FolderPath=$FolderPath.Trim()
         if ($FolderPath.ToCharArray()[-1] -eq "\") {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length)}    
@@ -138,7 +142,7 @@ Class DatabaseShipping {
     }
     hidden [System.Object]Database_GetDatabaseLSN([string]$ConnectionString,[string]$DatabaseName) {  #Get database latest LSN
         $this.LogWriter.Write("Processing Started.", [LogType]::INF)
-        [System.Object]$myAnswer=New-Object PsObject -Property @{LastLsn = 0; DiffBackupBaseLsn = 0;}
+        [System.Object]$myAnswer=New-Object PsObject -Property @{LastLsn = [decimal]0; DiffBackupBaseLsn = [decimal]0;}
         [string]$myCommand="
             USE [master];
             SELECT TOP 1
@@ -154,7 +158,7 @@ Class DatabaseShipping {
             "
         try{
             $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-            if ($null -ne $myRecord) {$myAnswer.LastLsn = $myRecord.LastLsn; $myAnswer.DiffBackupBaseLsn = $myRecord.DiffBackupBaseLsn}
+            if ($null -ne $myRecord) {$myAnswer.LastLsn = [decimal]$myRecord.LastLsn; $myAnswer.DiffBackupBaseLsn = [decimal]$myRecord.DiffBackupBaseLsn}
         }Catch{
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
         }
@@ -1074,6 +1078,7 @@ Class DatabaseShipping {
         if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
         foreach ($mySourceDB in $SourceDB){
             $myDestinationDB=$mySourceDB+$DestinationSuffix
+            $this.LogWriter=$null
             $this.ShipDatabase($mySourceDB,$myDestinationDB)
         }
     }
@@ -1118,12 +1123,12 @@ Class DatabaseShipping {
         }
 
         #--=======================Get DB Backup file combinations
-        [int]$myLatestLSN=0
-        [int]$myDiffBackupBaseLsn=0
+        [decimal]$myLatestLSN=0
+        [decimal]$myDiffBackupBaseLsn=0
         If (($myDestinationDbStatus -eq [DestinationDbStatus]::Online) -or ($myDestinationDbStatus -eq [DestinationDbStatus]::NotExist)){
             $this.LogWriter.Write(("Get DB Backup file combinations, for: " + $DestinationDB),[LogType]::INF)
-            $myLatestLSN=0
-            $myDiffBackupBaseLsn=0
+            $myLatestLSN=[decimal]0
+            $myDiffBackupBaseLsn=[decimal]0
         }elseif ($myDestinationDbStatus -eq [DestinationDbStatus]::Restoring) {
             $this.LogWriter.Write(("Get DB Backup file combinations, for: " + $DestinationDB),[LogType]::INF)
             $myLsnAnswers=$this.Database_GetDatabaseLSN($this.DestinationInstanceConnectionString,$DestinationDB)
@@ -1239,8 +1244,8 @@ Class DatabaseShipping {
         $myBackupFileList | ForEach-Object{Remove-Item -Path ($_.RemoteRepositoryUncFilePath); $this.LogWriter.Write(("Remove file " + $_.RemoteRepositoryUncFilePath),[LogType]::INF)}
 
         #--=======================SetDestinationDBMode
-        $this.LogWriter.Write(("Set destination database mode to " + $this.DestinationDbTargetMode),[LogType]::INF)
-        if ($this.DestinationDbTargetMode -eq "RECOVER") {
+        $this.LogWriter.Write(("Set destination database mode to " + $this.DestinationRestoreMode),[LogType]::INF)
+        if ($this.DestinationRestoreMode -eq "RECOVER") {
             $myRecoveryStatus=$this.Database_RecoverDatabase($this.DestinationInstanceConnectionString,$DestinationDB)
             if ($myRecoveryStatus -eq $false) {
                 $this.LogWriter.Write(("Database " + $DestinationDB + " does not exists or could not be recovered."),[LogType]::INF)
@@ -1277,11 +1282,11 @@ Function New-DatabaseShipping {
     [string]$myFileRepositoryUncPath=$FileRepositoryUncPath
     [int]$myLimitMsdbScanToRecentDays=$LimitMsdbScanToRecentDays
     [bool]$myRestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
-    [DatabaseRecoveryMode]$myDestinationDbTargetMode=$DestinationRestoreMode
+    [DatabaseRecoveryMode]$myDestinationRestoreMode=$DestinationRestoreMode
     [string]$myLogInstanceConnectionString=$LogInstanceConnectionString
     [string]$myLogTableName=$LogTableName
     [string]$myLogFilePath=$LogFilePath
-    [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentDays,$myRestoreFilesToIndividualFolders,$myDestinationDbTargetMode,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)
+    [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentDays,$myRestoreFilesToIndividualFolders,$myDestinationRestoreMode,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)
     Write-Verbose "New-DatabaseShipping Created"
 }
 #endregion
