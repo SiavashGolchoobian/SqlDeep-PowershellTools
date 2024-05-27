@@ -27,6 +27,54 @@ enum DatabaseFileType {
     DATA = 0
     LOG = 1
 }
+Class BackupFile {
+    [int]$StrategyNo
+    [int]$ID
+    [string]$DatabaseName
+    [int]$Position
+    [datetime]$BackupStartTime
+    [datetime]$BackupFinishTime
+    [decimal]$FirstLsn
+    [decimal]$LastLsn
+    [string]$BackupType
+    [int]$MediaSetId
+    [string]$FilePath
+    [string]$RemoteSourceFilePath
+    [string]$RemoteRepositoryUncFilePath
+    
+    BackupFile([string]$SourceServerName,[string]$FileRepositoryUncPath,[int]$StrategyNo,[int]$ID,[string]$DatabaseName,[int]$Position,[datetime]$BackupStartTime,[datetime]$BackupFinishTime,[decimal]$FirstLsn,[decimal]$LastLsn,[string]$BackupType,[int]$MediaSetId,[string]$FilePath){
+        $this.StrategyNo=$StrategyNo
+        $this.ID=$ID
+        $this.DatabaseName=$DatabaseName
+        $this.Position=$Position
+        $this.BackupStartTime=$BackupStartTime
+        $this.BackupFinishTime=$BackupFinishTime
+        $this.FirstLsn=$FirstLsn
+        $this.LastLsn=$LastLsn
+        $this.BackupType=$BackupType
+        $this.MediaSetId=$MediaSetId
+        $this.FilePath=$FilePath
+        $this.RemoteSourceFilePath=$this.CalcRemoteSourceFilePath($SourceServerName)
+        $this.RemoteRepositoryUncFilePath=$this.CalcRemoteRepositoryUncFilePath($FileRepositoryUncPath)
+    }
+    hidden [string]CalcRemoteSourceFilePath([string]$Server) {    #Converting local path to UNC path
+        Write-Verbose "Processing Started."
+        [string]$myAnswer=$null
+        if ($this.FilePath.Contains('\\') -eq $false) {
+            $myUncPath='\\' + $Server + "\" + ($this.FilePath.Split(':') -Join '$')
+            $myAnswer=$myUncPath
+        }else {
+            $myAnswer=$this.FilePath
+        }
+        return $myAnswer
+    }
+    hidden [string]CalcRemoteRepositoryUncFilePath ([string]$FileRepositoryUncPath) {    #Converting local path to Shared Repository UNC path
+        Write-Verbose "Processing Started."
+        [string]$myAnswer=$null
+        $myAnswer=$FileRepositoryUncPath + "\" + ($this.FilePath.Split('\')[-1])
+        return $myAnswer
+    }
+}
 Class DatabaseShipping {
     [string]$SourceInstanceConnectionString
     [string]$DestinationInstanceConnectionString
@@ -93,23 +141,6 @@ Class DatabaseShipping {
 
         return $myAnswer
     }
-    hidden [string]Path_ConvertLocalPathToUNC([string]$Server,[string]$Path) {    #Converting local path to UNC path
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF) 
-        [string]$myAnswer=$null
-        if ($Path.Contains('\\') -eq $false) {
-            $myUncPath='\\' + $Server + "\" + ($Path.Split(':') -Join '$')
-            $myAnswer=$myUncPath
-        }else {
-            $myAnswer=$Path
-        }
-        return $myAnswer
-    }
-    hidden [string]Path_ConvertLocalPathToSharedRepoPath ([string]$FileRepositoryUncPath,[string]$Path) {    #Converting local path to Shared Repository UNC path
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF) 
-        [string]$myAnswer=$null
-        $myAnswer=$FileRepositoryUncPath + "\" + ($Path.Split('\')[-1])
-        return $myAnswer
-    }
     hidden [bool]Instance_ConnectivityTest([string]$ConnectionString,[string]$DatabaseName) {  #Test Instance connectivity
         $this.LogWriter.Write("Processing Started.", [LogType]::INF)
         [bool]$myAnswer=$false
@@ -164,9 +195,16 @@ Class DatabaseShipping {
         }
         return $myAnswer
     }
-    hidden [System.Data.DataRow[]]Database_GetBackupFileList([string]$ConnectionString,[string]$DatabaseName,[Decimal]$LatestLSN,[Decimal]$DiffBackupBaseLsn) {    #Get List of backup files combination neede to restore
+    hidden [BackupFile[]]Database_GetBackupFileList([string]$ConnectionString,[string]$DatabaseName,[Decimal]$LatestLSN,[Decimal]$DiffBackupBaseLsn) {    #Get List of backup files combination neede to restore
         $this.LogWriter.Write("Processing Started.", [LogType]::INF)
-        [System.Data.DataRow[]]$myAnswer=$null
+        [BackupFile[]]$myAnswer=$null
+
+        $this.LogWriter.Write("Get Source instance server name.",[LogType]::INF)
+        $mySourceServerName=$this.Database_GetServerName($ConnectionString)
+        if ($null -eq $mySourceServerName) {
+            $this.LogWriter.Write("Source server name is empty.",[LogType]::ERR,$true)
+        }
+
         [string]$myCommand = "
         USE [tempdb];
         DECLARE @myDBName AS NVARCHAR(255);
@@ -895,9 +933,21 @@ Class DatabaseShipping {
         DROP FUNCTION dbo.fn_FileExists;   
         "
         try{
-            $myAnswer=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+            $this.LogWriter.Write("Query Backupfiles list.",[LogType]::INF)
+            [System.Data.DataRow[]]$myRecords=$null
+            $myRecords=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+            if ($null -ne $myRecords){
+                [System.Collections.ArrayList]$myBackupFileCollection=$null
+                $myBackupFileCollection=[System.Collections.ArrayList]::new()
+                #[System.Collections.Generic.List[BackupFile]]$myBackupFileCollection=$null
+                #$myBackupFileCollection=[System.Collections.Generic.List[BackupFile]]::new()
+                $myFileRepositoryUncPath=$this.FileRepositoryUncPath
+                $myRecords|ForEach-Object{$myBackupFileCollection.Add([BackupFile]::New($mySourceServerName,$myFileRepositoryUncPath,$_.StrategyNo,$_.ID,$_.DatabaseName,$_.Position,$_.BackupStartTime,$_.BackupFinishTime,$_.FirstLsn,$_.LastLsn,$_.BackupType,$_.MediaSetId,$_.FilePath))}
+                $myAnswer=$myBackupFileCollection.ToArray([BackupFile])
+            }
         }Catch{
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
+            $myAnswer.Clear()
         }
         return $myAnswer
     }
@@ -1020,7 +1070,7 @@ Class DatabaseShipping {
         }
         return $myAnswer
     }
-    hidden [string]BackupFileList_MergeBackupFilePath ([System.Data.DataRow[]]$Items,[string]$Delimiter=",") {   #Merge RemoteRepositoryUncFilePath property of input array
+    hidden [string]BackupFileList_MergeBackupFilePath ([BackupFile[]]$Items,[string]$Delimiter=",") {   #Merge RemoteRepositoryUncFilePath property of input array
         $this.LogWriter.Write("Processing Started.", [LogType]::INF)
         [string]$myAnswer=""
         foreach ($myItem in $Items) {
@@ -1090,6 +1140,11 @@ Class DatabaseShipping {
         $this.LogWriter.Write("Shipping process started...", [LogType]::INF) 
         $this.LogWriter.Write("Initializing EventsTable.Create.", [LogType]::INF) 
 
+        #--=======================Set constants
+        [string]$myDelimiter=","
+        [decimal]$myLatestLSN=0
+        [decimal]$myDiffBackupBaseLsn=0
+
         #--=======================Validate input parameters
         if ($SourceDB.Trim().Length -eq 0) {
             $this.LogWriter.Write("Source SourceDB is empty.",[LogType]::INF,$true)
@@ -1123,8 +1178,6 @@ Class DatabaseShipping {
         }
 
         #--=======================Get DB Backup file combinations
-        [decimal]$myLatestLSN=0
-        [decimal]$myDiffBackupBaseLsn=0
         If (($myDestinationDbStatus -eq [DestinationDbStatus]::Online) -or ($myDestinationDbStatus -eq [DestinationDbStatus]::NotExist)){
             $this.LogWriter.Write(("Get DB Backup file combinations, for: " + $DestinationDB),[LogType]::INF)
             $myLatestLSN=[decimal]0
@@ -1138,38 +1191,26 @@ Class DatabaseShipping {
         $this.LogWriter.Write(("Latest LSN is: " + $myLatestLSN.ToString()),[LogType]::INF)
         $this.LogWriter.Write(("DiffBackupBaseLsn is: " + $myDiffBackupBaseLsn.ToString()),[LogType]::INF)
 
+        [BackupFile[]]$myBackupFileList=$null
         $myBackupFileList=$this.Database_GetBackupFileList($this.SourceInstanceConnectionString,$SourceDB,$myLatestLSN,$myDiffBackupBaseLsn)
-        if ($null -eq $myBackupFileList) {
+        if ($null -eq $myBackupFileList -or $myBackupFileList.Count -eq 0) {
             $myRestoreStrategy = [RestoreStrategy]::NotExist
             $this.LogWriter.Write("There is nothing(no files) to restore.",[LogType]::WRN,$true)
         } else {
-            if ($myBackupFileList.Count -eq 1) {
-                $myRestoreStrategy=[RestoreStrategy]($myBackupFileList.StrategyNo)
-            }else{
-                $myRestoreStrategy=[RestoreStrategy]($myBackupFileList[0].StrategyNo)
-            }
+            $myRestoreStrategy=[RestoreStrategy]($myBackupFileList[0].StrategyNo)
         }
         $this.LogWriter.Write(("Selected strategy is: " + $myRestoreStrategy),[LogType]::INF)
 
         #--=======================Copy DB Backup files to FileRepositoryPath
-        $this.LogWriter.Write("Get Source instance server name.",[LogType]::INF)
-        $mySourceServerName=$this.Database_GetServerName($this.SourceInstanceConnectionString)
-        if ($null -eq $mySourceServerName) {
-            $this.LogWriter.Write("Source server name is empty.",[LogType]::ERR,$true)
-        }
-
         $this.LogWriter.Write("Check Writeable FileRepositoryPath.",[LogType]::INF)
         if ($this.Path_IsWritable($this.FileRepositoryUncPath) -eq $false) {
             $this.LogWriter.Write("FileRepositoryPath is not accesible.",[LogType]::ERR,$true)
         }
 
-        #--Add RemoteSourceFilePath attribute to object array
-        #Method1:   $myBackupFileList | ForEach-Object {$myRemoteSourceFilePath=Path.ConvertLocalPathToUNC -Server $mySourceServerName -Path ($_.FILEPATH); Copy-Item -Path $myRemoteSourceFilePath -Destination $FileRepositoryUncPath -Force;$this.LogWriter.Write(("Copy backup file from " + $myRemoteSourceFilePath + " to " + $FileRepositoryUncPath),[LogType]::INF)}
-        #Method2:   $myBackupFileList | Select-Object FILEPATH, @{Label='RemoteSourceFilePath';Expression={Path.ConvertLocalPathToUNC -Server $mySourceServerName -Path ($_.FILEPATH)}} | ForEach-Object {Copy-Item -Path ($_.RemoteSourceFilePath) -Destination $FileRepositoryUncPath -Force;$this.LogWriter.Write(("Copy backup file from " + ($_.RemoteSourceFilePath) + " to " + $FileRepositoryUncPath),[LogType]::INF)}
-        #Method3:
-        $myBackupFileList | Add-Member -MemberType ScriptProperty -Name RemoteSourceFilePath -Value {$this.Path_ConvertLocalPathToUNC($mySourceServerName,($this.FILEPATH))}
-        $myBackupFileList | Add-Member -MemberType ScriptProperty -Name RemoteRepositoryUncFilePath -Value {$this.Path_ConvertLocalPathToSharedRepoPath($this.FileRepositoryUncPath,($this.FILEPATH))}
-        $myBackupFileList | ForEach-Object {Copy-Item -Path ($_.RemoteSourceFilePath) -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop; $this.LogWriter.Write(("Copy backup file from " + ($_.RemoteSourceFilePath) + " to " + ($this.FileRepositoryUncPath)),[LogType]::INF)}
+        foreach ($myBackupFile in $myBackupFileList){
+            Copy-Item -Path ($myBackupFile.RemoteSourceFilePath) -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop
+            $this.LogWriter.Write(("Copy backup file from " + ($myBackupFile.RemoteSourceFilePath) + " to " + ($this.FileRepositoryUncPath)),[LogType]::INF)
+        }
 
         #--=======================Drop not in restoring mode databases
         If ($myDestinationDbStatus -eq [DestinationDbStatus]::Online -or $myRestoreStrategy -eq [RestoreStrategy]::FullDiffLog -or $myRestoreStrategy -eq [RestoreStrategy]::FullLog){
@@ -1206,14 +1247,9 @@ Class DatabaseShipping {
         $this.Database_CreateFolder($this.DestinationInstanceConnectionString,$myDefaultDestinationLogFolderLocation)
 
         $this.LogWriter.Write("Generate RestoreLocation",[LogType]::INF)
-        $myDelimiter=","
-        if ($myBackupFileList.Count -eq 1) {
-            $myMediasetId=$myBackupFileList.MediaSetId
-        }else{
-            $myMediasetId=$myBackupFileList[0].MediaSetId
-        }
-        $myMediasetMergedPath=$myBackupFileList | Where-Object -Property MediaSetId -EQ $myMediasetId | Group-Object -Property MediaSetId,Position | ForEach-Object{$this.BackupFileList_MergeBackupFilePath($_.Group,$myDelimiter)}
-        $myRestoreLocation = $this.BackupFileList_GenerateDestinationDatabaseFilesLocationFromBackupFile($this.DestinationInstanceConnectionString,$DestinationDB,$myMediasetMergedPath,$myDelimiter,$myDefaultDestinationDataFolderLocation,$myDefaultDestinationLogFolderLocation)
+        [int]$myMediasetId=$myBackupFileList[0].MediaSetId
+        [string]$myMediasetMergedPath=$myBackupFileList | Where-Object -Property MediaSetId -EQ $myMediasetId | Group-Object -Property MediaSetId,Position | ForEach-Object{$this.BackupFileList_MergeBackupFilePath($_.Group,$myDelimiter)}
+        [string]$myRestoreLocation = $this.BackupFileList_GenerateDestinationDatabaseFilesLocationFromBackupFile($this.DestinationInstanceConnectionString,$DestinationDB,$myMediasetMergedPath,$myDelimiter,$myDefaultDestinationDataFolderLocation,$myDefaultDestinationLogFolderLocation)
         if ($null -eq $myRestoreLocation -or $myRestoreLocation.Length -eq 0) {
             $this.LogWriter.Write("Can not get Restore location.",[LogType]::ERR,$true)
         }else{
@@ -1222,16 +1258,16 @@ Class DatabaseShipping {
 
         #--=======================Restoring backup(s) in destination
         $this.LogWriter.Write("Generate RestoreList",[LogType]::INF)
-        $myDelimiter=","
         $myRestoreList=$myBackupFileList | Group-Object -Property MediaSetId,Position | ForEach-Object{[PSCustomObject]@{
             MediaSetId=$_.Name.Split(",")[0]; 
             Order=($_.Group | Sort-Object ID | Select-Object -Last 1 -Property ID).ID;
-            RestoreCommand=$($this.BackupFileList_GenerateRestoreBackupCommand($DestinationDB,(($_.Group | Select-Object -Last 1 -Property BackupType).BackupType),($_.Name.Split(",")[1]),($this.BackupFileList_MergeBackupFilePath($_.Group,$myDelimiter),$myDelimiter,$myRestoreLocation)));
+            RestoreCommand=$($this.BackupFileList_GenerateRestoreBackupCommand($DestinationDB,(($_.Group | Select-Object -Last 1 -Property BackupType).BackupType),($_.Name.Split(",")[1]),($this.BackupFileList_MergeBackupFilePath($_.Group,$myDelimiter)),$myDelimiter,$myRestoreLocation));
         }}
+
         $this.LogWriter.Write("Run Restore Commands",[LogType]::INF)
         If ($null -ne $myRestoreList){
             try{
-                $myRestoreList | ForEach-Object{$this.LogWriter.Write(("Restore Command:" + $_.RestoreCommand),[LogType]::INF);Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query ($_.RestoreCommand) -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Continue}
+                $myRestoreList | ForEach-Object{$this.LogWriter.Write(("Restore Command:" + $_.RestoreCommand),[LogType]::INF);Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query ($_.RestoreCommand) -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop}
             }Catch{
                 $this.LogWriter.Write(($_.ToString()).ToString(),[LogType]::ERR)
             }
@@ -1245,7 +1281,7 @@ Class DatabaseShipping {
 
         #--=======================SetDestinationDBMode
         $this.LogWriter.Write(("Set destination database mode to " + $this.DestinationRestoreMode),[LogType]::INF)
-        if ($this.DestinationRestoreMode -eq "RECOVER") {
+        if ($this.DestinationRestoreMode -eq [DatabaseRecoveryMode]::RECOVERY) {
             $myRecoveryStatus=$this.Database_RecoverDatabase($this.DestinationInstanceConnectionString,$DestinationDB)
             if ($myRecoveryStatus -eq $false) {
                 $this.LogWriter.Write(("Database " + $DestinationDB + " does not exists or could not be recovered."),[LogType]::INF)
