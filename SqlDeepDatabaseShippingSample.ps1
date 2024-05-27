@@ -5,6 +5,10 @@ $myShip=New-DatabaseShipping -SourceInstanceConnectionString "Data Source=LSNR.S
 #Sample1:   Restore signle database [Sampledb1] as [Sampledb_DR] to destination in norecovery mode
 $myShip.ShipDatabase("Sampledb1","Sampledb1_DR")
 
-#Sample2:   Restore multiple database ([Sampledb1],[Sampledb2],[Sampledb2]) as [Sampledb1_DR],[Sampledb2_DR],[Sampledb2_DR] to destination in norecovery mode
-[string[]]$myDatabases="Sampledb1","Sampledb2","Sampledb2"
+#Sample2:   Restore multiple database ([Sampledb1],[Sampledb2],[Sampledb3]) as [Sampledb1_DR],[Sampledb2_DR],[Sampledb3_DR] to destination in norecovery mode
+[string[]]$myDatabases="Sampledb1","Sampledb2","Sampledb3"
 $myShip.ShipDatabases($myDatabases,"_DR")
+
+#Sample3:   Restore all user database except someones to destination in norecovery mode
+[string[]]$myExcludedList="SqlDeep","Sampledb3"
+$myShip.ShipAllUserDatabases("_DR",$myExcludedList)
