@@ -1122,7 +1122,29 @@ Class DatabaseShipping {
         $myAnswer = $myRestoreType + " [" + $DatabaseName + "] FROM " + $myBakupFilePaths + " WITH File = " + $Position.ToString() + $myRestoreLocation + ", NORECOVERY, STATS=5;"
         return $myAnswer
     }
-    [void] ShipDatabases([string[]]$SourceDB,[string]$DestinationSuffix){
+    [void] ShipAllUserDatabases([string]$DestinationSuffix,[string[]]$ExcludedDB){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
+        Write-Verbose ("ShipAllUserDatabases (except "+ $ExcludedDB.Count.ToString() +" db) with " + $DestinationSuffix + " suffix")
+        [string]$myExludedDB="''"
+        if ($null -ne $ExcludedDB){
+            foreach ($myExceptedDB in $ExcludedDB){
+                $myExludedDB+=",'" + $myExceptedDB + "'"
+            }
+        }
+        [string]$myCommand="
+            SELECT [name] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','distribution',"+$myExludedDB+")
+            "
+        try{
+            $myRecord=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+            if ($null -ne $myRecord) {
+                foreach ($mySourceDB in $myRecord){
+                    $this.ShipDatabases($mySourceDB.name,$DestinationSuffix)
+                }
+            }
+        }Catch{
+            Write-Verbose(($_.ToString()).ToString())
+        }
+    }
+    [void] ShipDatabases([string[]]$SourceDB,[string]$DestinationSuffix){   #Ship list of databases from source to destination
         Write-Verbose ("ShipDatabases("+ $SourceDB.Count.ToString() +") with " + $DestinationSuffix + " suffix")
         [string]$myDestinationDB=$null
         if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
@@ -1132,7 +1154,7 @@ Class DatabaseShipping {
             $this.ShipDatabase($mySourceDB,$myDestinationDB)
         }
     }
-    [void] ShipDatabase([string]$SourceDB,[string]$DestinationDB){
+    [void] ShipDatabase([string]$SourceDB,[string]$DestinationDB){  #Ship a databases from source to destination
         #--=======================Initial Log Modules
         Write-Verbose ("ShipDatabase " + $SourceDB + " as " + $DestinationDB)
         $this.LogFilePath=($this.LogFilePath.Replace("{Database}",$DestinationDB))
