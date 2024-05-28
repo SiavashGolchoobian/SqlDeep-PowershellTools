@@ -1339,7 +1339,7 @@ Class DatabaseShipping {
             }elseif ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -gt 0) {
                 $this.LogWriter.Write(("Finished with " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
             }else{
-                $this.LogWriter.Write(("Finished with " + $this.LogWriter.ErrCount.ToString() + " and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
+                $this.LogWriter.Write(("Finished with " + $this.LogWriter.ErrCount.ToString() + " Error(s) and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
             }
             $this.LogWriter.Write("===== Shipping process finished. ===== ", [LogType]::INF) 
         }
