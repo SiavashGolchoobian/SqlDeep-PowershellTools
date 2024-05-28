@@ -1311,6 +1311,7 @@ Class DatabaseShipping {
                     $myRestoreList | ForEach-Object{$this.LogWriter.Write(("Restore Command:" + $_.RestoreCommand),[LogType]::INF);Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query ($_.RestoreCommand) -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop}
                 }Catch{
                     $this.LogWriter.Write(($_.ToString()).ToString(),[LogType]::ERR)
+                    throw
                 }
             }else{
                 $this.LogWriter.Write("There is no commands to execute.",[LogType]::WRN)
