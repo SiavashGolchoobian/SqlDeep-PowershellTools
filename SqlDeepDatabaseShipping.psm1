@@ -1164,10 +1164,10 @@ Class DatabaseShipping {
     [void] ShipDatabase([string]$SourceDB,[string]$DestinationDB){  #Ship a databases from source to destination
         try {
             #--=======================Initial Log Modules
-            Write-Verbose ("ShipDatabase " + $SourceDB + " as " + $DestinationDB)
+            Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " started. =====")
             $this.LogFilePath=($this.LogFilePath.Replace("{Database}",$DestinationDB))
             $this.LogWriter=New-LogWriter -EventSource ($env:computername) -Module "DatabaseShipping" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
-            $this.LogWriter.Write("Shipping process started...", [LogType]::INF) 
+            $this.LogWriter.Write("===== Shipping process started... ===== ", [LogType]::INF) 
             $this.LogWriter.Write(("ShipDatabase " + $SourceDB + " as " + $DestinationDB), [LogType]::INF) 
             $this.LogWriter.Write("Initializing EventsTable.Create.", [LogType]::INF) 
 
@@ -1339,6 +1339,9 @@ Class DatabaseShipping {
         }catch{
             Write-Error ($_.ToString())
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
+        }finally{
+            Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished. =====")
+            $this.LogWriter.Write("===== Shipping process finished. ===== ", [LogType]::INF) 
         }
     }
 
