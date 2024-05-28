@@ -1329,19 +1329,18 @@ Class DatabaseShipping {
                     $this.LogWriter.Write(("Database " + $DestinationDB + " does not exists or could not be recovered."),[LogType]::INF)
                 }
             }
-
-            if ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -eq 0) {
-                $this.LogWriter.Write("Finished.",[LogType]::INF)
-            }elseif ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -gt 0) {
-                $this.LogWriter.Write(("Finished with " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
-            }else{
-                $this.LogWriter.Write(("Finished with " + $this.LogWriter.ErrCount.ToString() + " and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
-            }
         }catch{
             Write-Error ($_.ToString())
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
         }finally{
             Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished. =====")
+            if ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -eq 0) {
+                $this.LogWriter.Write("Finished.",[LogType]::INF)
+            }elseif ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -gt 0) {
+                $this.LogWriter.Write(("Finished with " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
+            }else{
+                $this.LogWriter.Write(("Finished with " + $this.LogWriter.ErrCount.ToString() + " Error(s) and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
+            }
             $this.LogWriter.Write("===== Shipping process finished. ===== ", [LogType]::INF) 
         }
     }
