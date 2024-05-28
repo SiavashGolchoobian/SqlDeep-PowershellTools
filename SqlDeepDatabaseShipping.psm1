@@ -86,6 +86,7 @@ Class DatabaseShipping {
     [string]$LogTableName="[dbo].[Events]"
     [string]$LogFilePath
     hidden [System.Object]$LogWriter
+    hidden [bool]$ExitSignal=$flase
 
     DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
         $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,30,$true,"RESTOREONLY",$LogInstanceConnectionString,$LogTableName,$LogFilePath)
@@ -1122,14 +1123,16 @@ Class DatabaseShipping {
         $myAnswer = $myRestoreType + " [" + $DatabaseName + "] FROM " + $myBakupFilePaths + " WITH File = " + $Position.ToString() + $myRestoreLocation + ", NORECOVERY, STATS=5;"
         return $myAnswer
     }
-    [void] ShipAllUserDatabases([string]$DestinationSuffix,[string[]]$ExcludedDB){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
-        Write-Verbose ("ShipAllUserDatabases (except "+ $ExcludedDB.Count.ToString() +" db) with " + $DestinationSuffix + " suffix")
+    [void] ShipAllUserDatabases([string]$DestinationSuffix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
+        Write-Verbose ("ShipAllUserDatabases with " + $DestinationSuffix + " suffix")
         [string]$myExludedDB="''"
-        if ($null -ne $ExcludedDB){
-            foreach ($myExceptedDB in $ExcludedDB){
+        [string]$myDestinationDB=$null
+        if ($null -ne $ExcludedList){
+            foreach ($myExceptedDB in $ExcludedList){
                 $myExludedDB+=",'" + $myExceptedDB + "'"
             }
         }
+        if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
         [string]$myCommand="
             SELECT [name] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','distribution',"+$myExludedDB+")
             "
@@ -1137,7 +1140,8 @@ Class DatabaseShipping {
             $myRecord=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
             if ($null -ne $myRecord) {
                 foreach ($mySourceDB in $myRecord){
-                    $this.ShipDatabases($mySourceDB.name,$DestinationSuffix)
+                    $myDestinationDB=$mySourceDB+$DestinationSuffix
+                    $this.ShipDatabase(($mySourceDB.name),$myDestinationDB)
                 }
             }
         }Catch{
