@@ -95,6 +95,10 @@ Function DownloadSingleFileFromDB #Export a BLOB file from anywhere to disk
         $myAnswer=$false
         Write-Error($_.ToString())
     }
+
+    IF (-not (Test-Path -Path $DestinationFilePath) -or -not ($myAnswer)) {
+        throw ($DestinationFilePath + " is not found or exported in current execution.")
+    }
     return $myAnswer
 }
 Function DownloadMultipleFilesFromDB
