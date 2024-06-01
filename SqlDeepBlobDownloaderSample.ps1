@@ -17,4 +17,4 @@ $myFileQueryList=@{}
 $myFileQueryList.("file1.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file1.txt'"
 $myFileQueryList.("file2.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file2.txt'"
 $myFileQueryList.("file3.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file3.txt'"
-$myAnswer=DownloadSingleFileFromDB -ConnectionString $myConnectionString -FileQueryList $myFileQueryList -DestinationFolderPath $myDestinationFolderPath
+$myAnswer=DownloadMultipleFilesFromDB -ConnectionString $myConnectionString -FileQueryList $myFileQueryList -DestinationFolderPath $myDestinationFolderPath

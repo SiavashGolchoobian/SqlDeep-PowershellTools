@@ -29,7 +29,7 @@
     $myFileQueryList.("file1.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file1.txt'"
     $myFileQueryList.("file2.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file2.txt'"
     $myFileQueryList.("file3.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file3.txt'"
-    DownloadSingleFileFromDB -ConnectionString $myConnectionString -FileQueryList $myFileQueryList -DestinationFolderPath $myDestinationFolderPath
+    DownloadMultipleFilesFromDB -ConnectionString $myConnectionString -FileQueryList $myFileQueryList -DestinationFolderPath $myDestinationFolderPath
     
 #>
 Import-Module -Name SqlServer
@@ -42,6 +42,7 @@ Function DownloadSingleFileFromDB #Export a BLOB file from anywhere to disk
         [Parameter(Mandatory=$true)][string]$DestinationFilePath
         )
     [bool]$myAnswer=$true;
+    Write-Output ("Downloading " + $DestinationFilePath + " ...")
 	try {
         $myBufferSize = 8192*8;
         # Open ADO.NET Connection
@@ -114,10 +115,17 @@ Function DownloadMultipleFilesFromDB
         [int]$myRequestCount=$FileQueryList.Count
         [int]$myDownloadedCount=0
         [bool]$myDownloadResult=$false
-        foreach ($myKey in $FileQueryList) {
-            $myFilePath=$DestinationFolderPath + "\" + $myKey
-            $myBlobQuery=$FileQueryList[$myKey]
-            $myDownloadResult=DownloadSingleFileFromDB -ConnectionString $ConnectionString -QueryToGetSpecificFile $myBlobQuery -DestinationFilePath $myFilePath
+        if ($DestinationFolderPath[-1] -ne "\") {$DestinationFolderPath+="\"}
+        foreach ($myItem in $FileQueryList.GetEnumerator()) {
+            [string]$myFile=$myItem.Key.ToString().Trim()
+            [string]$myBlobQuery=$myItem.Value.ToString().Trim()
+            $myFilePath=$DestinationFolderPath + $myFile
+            If ($myFile.Length -gt 0 -and $DestinationFolderPath.Length -gt 0) {
+                Write-Output ("Downloading " + $DestinationFilePath + " ...")
+                $myDownloadResult=DownloadSingleFileFromDB -ConnectionString $ConnectionString -QueryToGetSpecificFile $myBlobQuery -DestinationFilePath $myFilePath
+            } else {
+                $myDownloadResult=$false
+            }
             if ($myDownloadResult) {$myDownloadedCount+=1}
         }
         if ($myDownloadedCount -eq $myRequestCount) {$myAnswer=$true}
