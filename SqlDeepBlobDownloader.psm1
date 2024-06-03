@@ -42,7 +42,7 @@ Function DownloadSingleFileFromDB #Export a BLOB file from anywhere to disk
         [Parameter(Mandatory=$true)][string]$DestinationFilePath
         )
     [bool]$myAnswer=$true;
-    Write-Output ("Downloading " + $DestinationFilePath + " ...")
+    Write-Output ("Single file downloader: Downloading " + $DestinationFilePath + " ...")
 	try {
         $myBufferSize = 8192*8;
         # Open ADO.NET Connection
@@ -64,6 +64,8 @@ Function DownloadSingleFileFromDB #Export a BLOB file from anywhere to disk
             $myFolderPath=Split-Path $DestinationFilePath
             IF (-not (Test-Path -Path $myFolderPath -PathType Container)) {
                 New-Item -Path $myFolderPath -ItemType Directory -Force
+                #$myDestinationFolderPath=$DestinationFilePath.Substring(0,($DestinationFilePath.Length-$DestinationFilePath.Split("\")[-1].Length))
+                #New-Item -ItemType Directory -Path $myDestinationFolderPath -Force
             }
             IF (Test-Path -Path $DestinationFilePath -PathType Leaf) {Move-Item -Path $DestinationFilePath -Force}
             
@@ -121,7 +123,7 @@ Function DownloadMultipleFilesFromDB
             [string]$myBlobQuery=$myItem.Value.ToString().Trim()
             $myFilePath=$DestinationFolderPath + $myFile
             If ($myFile.Length -gt 0 -and $DestinationFolderPath.Length -gt 0) {
-                Write-Output ("Downloading " + $DestinationFilePath + " ...")
+                Write-Output ("Multiple file downloader: Downloading " + $myFilePath + " ...")
                 $myDownloadResult=DownloadSingleFileFromDB -ConnectionString $ConnectionString -QueryToGetSpecificFile $myBlobQuery -DestinationFilePath $myFilePath
             } else {
                 $myDownloadResult=$false
