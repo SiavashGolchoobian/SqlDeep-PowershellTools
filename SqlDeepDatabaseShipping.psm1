@@ -1,6 +1,6 @@
 Using module .\SqlDeepDatabaseShippingEnums.psm1
 Using module .\SqlDeepLogWriterEnums.psm1
-Import-Module .\SqlDeepLogWriter.psm1
+Import-Module "$PSScriptRoot\SqlDeepLogWriter.psm1"
 
 enum DestinationDbStatus {
     Unknown = -10
