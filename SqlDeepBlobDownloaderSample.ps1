@@ -1,4 +1,4 @@
-Import-Module .\SqlDeepBlobDownloader.psm1
+Import-Module "$PSScriptRoot\SqlDeepBlobDownloader.psm1"
     
 #Sample 1: Download single file
 [bool]$myAnswer
