@@ -300,7 +300,7 @@ Class SysAdminAudit{
                 if ($null -ne $myRecords){
                     $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module "AdminLogins" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
                     foreach ($myRecord in $myRecords){
-                        $myAlarmWriter.LogWriter($myRecords.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp)
+                        $myAlarmWriter.LogWriter($myRecords.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
                     }
                 }
             }catch{
