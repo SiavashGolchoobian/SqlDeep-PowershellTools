@@ -86,7 +86,6 @@ Class DatabaseShipping {
     [string]$LogTableName="[dbo].[Events]"
     [string]$LogFilePath
     hidden [System.Object]$LogWriter
-    hidden [bool]$ExitSignal=$flase
 
     DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
         $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,30,$true,"RESTOREONLY",$LogInstanceConnectionString,$LogTableName,$LogFilePath)

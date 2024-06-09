@@ -112,12 +112,18 @@ Class LogWriter {
         return [string]$(Get-PSCallStack)[$StackNumber].FunctionName
     }
     [void] Write([string]$Content) {
-        $this.Write($Content,[LogType]::INF,$false)
+        $this.Write($Content,[LogType]::INF,$false,$false,$null)
     }
     [void] Write([string]$Content, [LogType]$Type) {
-        $this.Write($Content,$Type,$false)
+        $this.Write($Content,$Type,$false,$false,$null)
     }
-    [void] Write([string]$Content, [LogType]$Type, [bool]$Terminate){    #Fill Log file
+    [void] Write([string]$Content, [LogType]$Type, [bool]$Terminate){
+        $this.Write($Content,$Type,$Terminate,$false,$null)
+    }
+    [void] Write([string]$Content, [LogType]$Type, [bool]$Terminate, [bool]$IsSMS){
+        $this.Write($Content,$Type,$Terminate,$IsSMS,$null)
+    }
+    [void] Write([string]$Content, [LogType]$Type, [bool]$Terminate, [bool]$IsSMS, [string]$EventTimeStamp){    #Fill Log file
         Write-Verbose "Write-Log started"
         [string]$myIsSMS="0"
         [string]$myEventTimeStamp=(Get-Date).ToString()
@@ -130,6 +136,14 @@ Class LogWriter {
             ERR {$myColor="Red";$myIsSMS="1";$this.ErrCount+=1}
             Default {$myColor="White"}
         }
+        if ($IsSMS){$myIsSMS="1"} else {$myIsSMS="0"}
+        try {
+            $myEventTimeStamp=([datetime]$EventTimeStamp).ToString()
+        }
+        catch {
+            $myEventTimeStamp=(Get-Date).ToString()
+        }
+        
 
         $myContent = $myEventTimeStamp + "`t" + $Type + "`t(" + ($this.GetFunctionName(3)) +")`t"+ $Content
         if ($Terminate) { $myContent+=$myContent + "`t" + ". Prcess terminated with " + $this.ErrCount.ToString() + " Error count and " + $this.WrnCount.ToString() + " Warning count."}
