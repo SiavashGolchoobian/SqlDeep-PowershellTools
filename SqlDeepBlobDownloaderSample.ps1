@@ -6,7 +6,7 @@ Import-Module "$PSScriptRoot\SqlDeepBlobDownloader.psm1"
 [string]$myDestinationFolderPath="C:\Repo"
 [string]$myDestinationFileName="File1.txt"
 [string]$myDestinationFilePath=$myDestinationFolderPath + "\" + $myDestinationFileName
-[string]$myBlobQuery="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'"+$myDestinationFileName+"'"
+[string]$myBlobQuery="SELECT TOP 1 [ItemContent] FROM [SqlDeep].[repository].[Subscriber] WITH (READPAST) WHERE [IsEnabled]=1 AND [ItemChecksum]=[SubscriberItemChecksum] AND [ItemName]=N'"+$myDestinationFileName+"'"
 $myAnswer=DownloadSingleFileFromDB -ConnectionString $myConnectionString -QueryToGetSpecificFile $myBlobQuery -DestinationFilePath $myDestinationFilePath
 
 #Sample 2: Download list of files
@@ -14,9 +14,9 @@ $myAnswer=DownloadSingleFileFromDB -ConnectionString $myConnectionString -QueryT
 [string]$myConnectionString="Data Source=DB-MN-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;Encrypt=True"
 [string]$myDestinationFolderPath="C:\Repo"
 $myFileQueryList=@{}
-$myFileQueryList.("file1.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file1.txt'"
-$myFileQueryList.("file2.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file2.txt'"
-$myFileQueryList.("file3.txt")="SELECT TOP 1 [FileContent] FROM [SqlDeep].[dbo].[ScriptRepositoryGuest] WITH (READPAST) WHERE [IsEnabled]=1 AND [HostChecksum]=[GuestChecksum] AND [FileUniqueName]=N'file3.txt'"
+$myFileQueryList.("file1.txt")="SELECT TOP 1 [ItemContent] FROM [SqlDeep].[repository].[Subscriber] WITH (READPAST) WHERE [IsEnabled]=1 AND [ItemChecksum]=[SubscriberItemChecksum] AND [ItemName]=N'file1.txt'"
+$myFileQueryList.("file2.txt")="SELECT TOP 1 [ItemContent] FROM [SqlDeep].[repository].[Subscriber] WITH (READPAST) WHERE [IsEnabled]=1 AND [ItemChecksum]=[SubscriberItemChecksum] AND [ItemName]=N'file2.txt'"
+$myFileQueryList.("file3.txt")="SELECT TOP 1 [ItemContent] FROM [SqlDeep].[repository].[Subscriber] WITH (READPAST) WHERE [IsEnabled]=1 AND [ItemChecksum]=[SubscriberItemChecksum] AND [ItemName]=N'file3.txt'"
 $myAnswer=DownloadMultipleFilesFromDB -ConnectionString $myConnectionString -FileQueryList $myFileQueryList -DestinationFolderPath $myDestinationFolderPath
 
 #Sample 3: Download list of files via query
