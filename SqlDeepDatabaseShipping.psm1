@@ -367,6 +367,7 @@ Class DatabaseShipping {
                 AND [myBackupset].[type] = 'I'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
+
             DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='D' AND CheckpointLsn NOT IN (SELECT DatabaseBackupLsn FROM #myResult WHERE StrategyNo=1 AND BackupType='I' GROUP BY DatabaseBackupLsn)	--Delete full backups without any available incremental backups
             IF NOT EXISTS (SELECT 1 FROM #myResult WHERE StrategyNo=1 AND BackupType IN ('D'))
                 DELETE FROM #myResult WHERE StrategyNo=1
@@ -411,8 +412,13 @@ Class DatabaseShipping {
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
-                AND	[myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1)
+                AND	(
+                    [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1)
+                    OR
+                    (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
+                    )
             
+            UPDATE #myResult SET IsContiguous=1 WHERE StrategyNo=1 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=1 AND BackupType='L')	    --First log file is not uncontiguous
             DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=1 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
             DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='I' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=1 AND BackupType='L')	--Delete differential backups without continious log backup chain
             DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='D' AND CheckpointLsn NOT IN (SELECT DatabaseBackupLsn FROM #myResult WHERE StrategyNo=1 AND BackupType='I' GROUP BY DatabaseBackupLsn)	--Delete full backups without any available incremental backups
@@ -454,7 +460,7 @@ Class DatabaseShipping {
                     [myDiffBackups].[Cost]+CAST([myLogBackups].[BackupFileSizeMB] AS REAL) AS Cost
                 FROM 
                     myStrategy1 AS myDiffBackups
-                    INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myDiffBackups].[FirstLsn]
+                    INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myDiffBackups].[FirstLsn] OR [myDiffBackups].[FirstLsn] BETWEEN [myLogBackups].[FirstLsn] AND [myLogBackups].[LastLsn] 
                 WHERE 
                     [myDiffBackups].[StrategyNo]=1 AND [myDiffBackups].[BackupType]='I'
                     AND [myLogBackups].[StrategyNo]=1 AND [myLogBackups].[BackupType]='L'
@@ -566,8 +572,13 @@ Class DatabaseShipping {
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
-                AND	[myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2)
+                AND	(
+                    [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2)
+                    OR
+                    (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
+                    )
             
+            UPDATE #myResult SET IsContiguous=1 WHERE StrategyNo=2 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=2 AND BackupType='L')	    --First log file is not uncontiguous
             DELETE FROM #myResult WHERE StrategyNo=2 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=2 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
             DELETE FROM #myResult WHERE StrategyNo=2 AND BackupType='D' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=2 AND BackupType='L')	--Delete full backups without continious log backup chain
             IF NOT EXISTS (SELECT 1 FROM #myResult WHERE StrategyNo=2 AND BackupType IN ('D'))
@@ -596,7 +607,7 @@ Class DatabaseShipping {
                     [myFullBackups].[Cost]+CAST([myLogBackups].[BackupFileSizeMB] AS REAL) AS Cost
                 FROM 
                     myStrategy2 AS myFullBackups
-                    INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myFullBackups].[FirstLsn]
+                    INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myFullBackups].[FirstLsn] OR [myFullBackups].[FirstLsn] BETWEEN [myLogBackups].[FirstLsn] AND [myLogBackups].[LastLsn] 
                 WHERE 
                     [myFullBackups].[StrategyNo]=2 AND [myFullBackups].[BackupType]='D'
                     AND [myFullBackups].[StrategyNo]=2 AND [myLogBackups].[BackupType]='L'
@@ -708,8 +719,13 @@ Class DatabaseShipping {
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
-                AND	[myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=3)
+                AND	(
+                    [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=3)
+                    OR
+                    (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=3) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
+                    )
             
+            UPDATE #myResult SET IsContiguous=3 WHERE StrategyNo=1 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=3 AND BackupType='L')	    --First log file is not uncontiguous
             DELETE FROM #myResult WHERE StrategyNo=3 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=3 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
             DELETE FROM #myResult WHERE StrategyNo=3 AND BackupType='I' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=3 AND BackupType='L')	--Delete differential backups without continious log backup chain
             IF NOT EXISTS (SELECT 1 FROM #myResult WHERE StrategyNo=3 AND BackupType IN ('I'))
@@ -738,7 +754,7 @@ Class DatabaseShipping {
                     [myDiffBackups].[Cost]+CAST([myLogBackups].[BackupFileSizeMB] AS REAL) AS Cost
                 FROM 
                     myStrategy3 AS myDiffBackups
-                    INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myDiffBackups].[FirstLsn]
+                    INNER JOIN #myResult AS myLogBackups ON [myLogBackups].[FirstLsn] >= [myDiffBackups].[FirstLsn] OR [myDiffBackups].[FirstLsn] BETWEEN [myLogBackups].[FirstLsn] AND [myLogBackups].[LastLsn] 
                 WHERE 
                     [myDiffBackups].[StrategyNo]=3 AND [myDiffBackups].[BackupType]='I'
                     AND [myLogBackups].[StrategyNo]=3 AND [myLogBackups].[BackupType]='L'
@@ -818,6 +834,7 @@ Class DatabaseShipping {
                     [myBackupset].[first_lsn] >= @myLatestLsn
                     )
             
+            UPDATE #myResult SET IsContiguous=1 WHERE StrategyNo=4 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=4 AND BackupType='L')	    --First log file is not uncontiguous
             DELETE FROM #myResult WHERE StrategyNo=4 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=4 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
         ----------------------Step4.2:	Generate Roadmaps
         IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=4)
