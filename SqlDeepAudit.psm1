@@ -158,7 +158,7 @@ Class SqlSysAdminAudit{
             $mySecurityEventCollection=[System.Collections.ArrayList]::new()
             $this.LogWriter.Write("Specify sql server non-admin logins.",[LogType]::INF)
             $myNonAdmins = Invoke-Sqlcmd -ConnectionString ($this.CurrentInstanceConnectionString) -Query $myNonAdminLoginsQuery -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-            $this.LogWriter.Write(("Retrive only admin logins from Windows Events from " + $this.ScanStartTime.ToString()),[LogType]::INF)
+            $this.LogWriter.Write(("Retrive only admin logins from Windows Events from " + $this.ScanStartTime.ToString() + " through " + (Get-Date).ToString()),[LogType]::INF)
             $myEvents = (Get-WinEvent -FilterHashtable @{
                 LogName='Application'
                 ProviderName='MSSQL$NODE'
@@ -350,7 +350,7 @@ Class SqlSysAdminAudit{
                     $this.LogWriter.Write("There is "+ $myRecords.Count.ToString()+" Alarms found.",[LogType]::INF)
                     $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module "SqlSysAdminLogin" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
                     foreach ($myRecord in $myRecords){
-                        $myAlarmWriter.LogWriter($myRecords.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
+                        $myAlarmWriter.Write($myRecord.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
                     }
                 }else{
                     $this.LogWriter.Write("There is no Alarms found.",[LogType]::INF)
@@ -444,7 +444,7 @@ Class OsLoginAudit{
             $this.ScanStartTime=(Get-Date).AddMinutes((-1*[Math]::Abs($this.LimitEventLogScanToRecentMinutes)));
             [System.Collections.ArrayList]$mySecurityEventCollection=$null
             $mySecurityEventCollection=[System.Collections.ArrayList]::new()
-            $this.LogWriter.Write(("Retrive only OS logins from Windows Events from " + $this.ScanStartTime.ToString()),[LogType]::INF)
+            $this.LogWriter.Write(("Retrive only OS logins from Windows Events from " + $this.ScanStartTime.ToString() + " through " + (Get-Date).ToString()),[LogType]::INF)
             $myEvents = (Get-WinEvent -FilterHashtable @{
                 LogName='Security'
                 ProviderName='Microsoft-Windows-Security-Auditing'
@@ -599,11 +599,11 @@ Class OsLoginAudit{
                                 [myRawLog].[LoginType],
                                 [myRawLog].[ImpersonationLevel]
                         ) AS myLogs
-                        LEFT OUTER JOIN @myKnownList AS myKnownList ON [myLogs].[Login]=[myKnownList].[Login] AND [myLogs].[ClientName] LIKE [myKnownList].[ClientName] OR [myLogs].[ClientIp] LIKE [myKnownList].[ClientIp])
+                        LEFT OUTER JOIN @myKnownList AS myKnownList ON [myLogs].[Login]=[myKnownList].[Login] AND ([myLogs].[ClientName] LIKE [myKnownList].[ClientName] OR [myLogs].[ClientIp] LIKE [myKnownList].[ClientIp])
         
                     SELECT 
                         [myLoginStat].[StartDateTime] AS [EventTimeStamp],
-                        N'Unexpected Windows Login from '+ [myLoginStat].[ClientName] +N' client with ' + [myLoginStat].[Login] + N' login between ' + CAST([myLoginStat].[StartTime] AS nvarchar(10)) + N' and ' + CAST([myLoginStat].[FinishTime] AS nvarchar(10)) + N' for ' + CAST([myLoginStat].[LoginAttempts] AS nvarchar(10)) + N' times. Impersonation is ' + [myLogonStat].[ImpersonationLevel] + ' and LogonType is ' + CAST([myLogonStat].[ImpersonationLevel] AS NVARCHAR(10)) + '.' AS [Description]
+                        N'Unexpected Windows Login from '+ [myLoginStat].[ClientName] +N' client with ' + [myLoginStat].[Login] + N' login between ' + CAST([myLoginStat].[StartTime] AS nvarchar(10)) + N' and ' + CAST([myLoginStat].[FinishTime] AS nvarchar(10)) + N' for ' + CAST([myLoginStat].[LoginAttempts] AS nvarchar(10)) + N' times. Impersonation is ' + [myLoginStat].[ImpersonationLevel] + ' and LogonType is ' + CAST([myLoginStat].[LoginType] AS NVARCHAR(10)) + '.' AS [Description]
                     FROM 
                         @myLoginStat AS myLoginStat
                         OUTER APPLY (
@@ -650,7 +650,7 @@ Class OsLoginAudit{
                     $this.LogWriter.Write("There is "+ $myRecords.Count.ToString()+" Alarms found.",[LogType]::INF)
                     $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module "OsLogin" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
                     foreach ($myRecord in $myRecords){
-                        $myAlarmWriter.LogWriter($myRecords.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
+                        $myAlarmWriter.Write($myRecord.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
                     }
                 }else{
                     $this.LogWriter.Write("There is no Alarms found.",[LogType]::INF)
@@ -661,6 +661,24 @@ Class OsLoginAudit{
         } ELSE {
             Write-Host "Analyze Event Logs: There is nothing"
         }
+    }
+    [void] AnalyzeEvents(){
+        try {
+            #--=======================Initial Log Modules
+            Write-Verbose ("===== OsLoginAudit process started. =====")
+            $this.LogWriter=New-LogWriter -EventSource ($env:computername) -Module "OsLoginAudit" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
+            $this.LogWriter.Write("===== OsLoginAudit process started... ===== ", [LogType]::INF) 
+            $this.CollectEvents()       #-----Retrive Successful Logins
+            $this.SaveEvents()          #-----Insert Event Logs to a table
+            $this.CleanEvents()         #-----Clean Event old Logs
+            $this.AnalyzeSavedEvents()  #-----Analyze Event Logs and send alert
+        }catch{
+            Write-Error ($_.ToString())
+            $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
+        }finally{
+            Write-Verbose ("===== OsLoginAudit finished. =====")
+        }
+        $this.LogWriter.Write("===== OsLoginAudit process finished. ===== ", [LogType]::INF) 
     }
     #endregion
 }
@@ -773,7 +791,7 @@ Function New-OsLoginAuditByJsonConnSpec {
     [string]$myLogInstanceConnectionString=$LogInstanceConnectionString
     [string]$myLogTableName=$LogTableName
     [string]$myLogFilePath=$LogFilePath
-    [SqlSysAdminAudit]$myAnswer=$null
+    [OsLoginAudit]$myAnswer=$null
 
     try {
         $Null=@(
