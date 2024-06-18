@@ -5,3 +5,5 @@ $myLogWriter=New-LogWriter -EventSource ($env:computername) -Module "Test" -LogT
 $myLogWriter.Write("Testing process started...", [LogType]::INF) 
 $myLogWriter.Write("Testing process started...", [LogType]::WRN) 
 $myLogWriter.Write("Testing process started...", [LogType]::ERR,$true) 
+$myLogWriter.ArchiveLogFilesToZipFile($null,[ArchiveTimeScale]::ByMonth,2,5,$true) #   Archive all log files (except last 2 files) to a zip file (a zip file for each year) inside current log directoy and remove archived logs
+$myLogWriter.DeleteArchiveFiles($null,[ArchiveTimeScale]::ByMonth,2) #  Remove archive yearly zipped files (except last 2 zip files)

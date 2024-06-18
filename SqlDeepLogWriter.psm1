@@ -30,6 +30,7 @@ Class LogWriter {
     [string]$LogTableName="[dbo].[Events]"
     [int]$ErrCount=0
     [int]$WrnCount=0
+    hidden[string]$LogFilePathPattern
     
     LogWriter(){
         $this.Init($null,"UNKNOWN",$true,$false,$null,$false,$null,$null)
@@ -56,6 +57,7 @@ Class LogWriter {
         $this.Module=$Module
         $this.LogToConsole=$LogToConsole
         $this.LogToFile=$LogToFile
+        $this.LogFilePathPattern=$LogFilePath
         $this.LogFilePath=($LogFilePath.Replace("{Date}",$mySysToday)).Replace("{DateTime}",$mySysTodayTime)
         $this.LogToTable=$LogToTable
         $this.LogInstanceConnectionString=$LogInstanceConnectionString
@@ -124,7 +126,7 @@ Class LogWriter {
         $this.Write($Content,$Type,$Terminate,$IsSMS,$null)
     }
     [void] Write([string]$Content, [LogType]$Type, [bool]$Terminate, [bool]$IsSMS, [string]$EventTimeStamp){    #Fill Log file
-        Write-Verbose "Write-Log started"
+        Write-Verbose "Write-Log started."
         [string]$myIsSMS="0"
         [string]$myEventTimeStamp=(Get-Date).ToString()
         [string]$myContent=""
@@ -182,7 +184,105 @@ Class LogWriter {
             }
         }
         if ($Terminate){Exit}
-        Write-Verbose "Write-Log finished"
+        Write-Verbose "Write-Log finished."
+    }
+    [void] ArchiveLogFilesToZipFile([string]$ArchiveFolder,[ArchiveTimeScale]$ArchiveFileTemplate,[int]$KeepLatestFilesCount=2,[int]$BatchCount=5,[bool]$RemoveSourceFiles=$true){
+        Write-Verbose "ArchiveLogFilesToZipFile started."
+        [int]$myBatchCount=5
+        [string]$mySourceFolder=$null
+        [string]$mySourceFile=$null
+        [string]$mySourceFilePattern=$null
+        [string]$myZipPathTemplate=$null
+        [string]$myGroupByPattern=$null
+        
+        if ($this.LogToFile) {
+            if ($BatchCount -gt 0){$myBatchCount=$BatchCount}
+            if ($null -eq $ArchiveFolder -or $ArchiveFolder.Trim().Length -eq 0) {$ArchiveFolder=(Split-Path -Parent ($this.LogFilePath)).Trim()}
+            if ($ArchiveFolder[-1] -ne "\") {$ArchiveFolder+="\"}
+            $mySourceFolder=(Split-Path -Parent ($this.LogFilePath)).Trim()
+            if ($mySourceFolder[-1] -ne "\") {$mySourceFolder+="\"}
+            $mySourceFile=Split-Path -Path ($this.LogFilePathPattern) -Leaf
+            $mySourceFilePattern="^"+($mySourceFile.Replace("{Date}","([0-9]{8})").Replace("{DateTime}","([0-9]{8})_([0-9]{4})"))+"$"
+            $myZipPathTemplate = $ArchiveFolder + $mySourceFile.Replace("{Date}","").Replace("{DateTime}","") + "{myGroup}.zip"
+
+            Switch ($ArchiveFileTemplate) {
+                ByYear {$myGroupByPattern="yyyy"}
+                ByMonth {$myGroupByPattern="yyyyMM"}
+                ByDay {$myGroupByPattern="yyyyMMdd"}
+                ByHour {$myGroupByPattern="yyyyMMddHH"}
+                ByTime {$myGroupByPattern="yyyyMMddHHmmss"}
+                Default {$myGroupByPattern="yyyyMMdd"}
+            }
+
+            Write-Output ("SourceFolder is: "+$mySourceFolder)
+            Write-Output ("SourceFilePattern is: "+$mySourceFilePattern)
+            Write-Output ("ArchiveFolder is: "+$ArchiveFolder)
+            Write-Output ("ZipPathTemplate is: "+$myZipPathTemplate)
+
+            $mySelectedFiles = Get-ChildItem -Path $mySourceFolder | Where-Object -Property Name -match $mySourceFilePattern | Sort-Object -Property LastWriteTime | Select-Object -SkipLast $KeepLatestFilesCount
+            $myGroupedFiles = $mySelectedFiles | Group-Object -Property {$_.LastWriteTime.ToString($myGroupByPattern)}
+            ForEach ($myGroup in $myGroupedFiles) {
+                $myGroupCountOfFiles=[math]::Ceiling($myGroup.Count/$myBatchCount)
+                For ($myCounter=1; $myCounter -le $myGroupCountOfFiles; $myCounter+=1) {
+                    try{
+                        $myCurrentZipPath = $myZipPathTemplate.Replace('{myGroup}',$myGroup.Name)
+                        Write-Output ("Compressing files to " + $myCurrentZipPath + " (" + $myCounter.ToString() + " of " + $myGroupCountOfFiles.ToString() + ")...")
+                        $myGroupChunk = $myGroup.Group | Select-Object -Skip (($myCounter-1)*$myBatchCount) -First $myBatchCount
+                        $myGroupChunk | Compress-Archive -DestinationPath $myCurrentZipPath -CompressionLevel Optimal -Update
+                        $myGroupChunk | ForEach-Object{Write-Output ($_.Name + " is compressed to " + $myCurrentZipPath + ".")}
+                        Write-Output ("Batch Compression finished.")
+                        if ($RemoveSourceFiles){
+                            Write-Output ("Removing source files started.")
+                            $myGroupChunk | Remove-Item 
+                            Write-Output ("Source files removed.")
+                        }
+                    }catch{
+                        Write-Error ($_.ToString()).ToString()
+                    }
+                }
+            }
+        }else{
+            Write-Output ("Log to files is disabled.")
+        }
+        Write-Verbose "ArchiveLogFilesToZipFile finished."
+    }
+    [void] DeleteArchiveFiles([string]$ArchiveFolder,[ArchiveTimeScale]$ArchiveFileTemplate,[int]$KeepLatestFilesCount=2){
+        Write-Verbose "DeleteArchiveFiles started."
+        [string]$mySourceFile=$null
+        [string]$myZipPathTemplate=$null
+        
+        if ($this.LogToFile) {
+            $mySourceFile=Split-Path -Path ($this.LogFilePathPattern) -Leaf
+            if ($null -eq $ArchiveFolder -or $ArchiveFolder.Trim().Length -eq 0) {$ArchiveFolder=(Split-Path -Parent ($this.LogFilePath)).Trim()}
+            if ($ArchiveFolder[-1] -ne "\") {$ArchiveFolder+="\"}
+            $myZipPathTemplate=$mySourceFile.Replace("{Date}","").Replace("{DateTime}","") + "{myGroup}.zip"
+            
+            Switch ($ArchiveFileTemplate) {
+                ByYear {$myZipPathTemplate="^"+$myZipPathTemplate.Replace("{myGroup}","([0-9]{4})\")+"$"}
+                ByMonth {$myZipPathTemplate="^"+$myZipPathTemplate.Replace("{myGroup}","([0-9]{6})\")+"$"}
+                ByDay {$myZipPathTemplate="^"+$myZipPathTemplate.Replace("{myGroup}","([0-9]{8})\")+"$"}
+                ByHour {$myZipPathTemplate="^"+$myZipPathTemplate.Replace("{myGroup}","([0-9]{10})\")+"$"}
+                ByTime {$myZipPathTemplate="^"+$myZipPathTemplate.Replace("{myGroup}","([0-9]{14})\")+"$"}
+                Default {$myZipPathTemplate="^"+$myZipPathTemplate.Replace("{myGroup}","([0-9]{4})\")+"$"}
+            }
+
+            Write-Output ("SourceFilePattern is: "+$mySourceFile)
+            Write-Output ("ArchiveFolder is: "+$ArchiveFolder)
+            Write-Output ("ZipPathTemplate is: "+$myZipPathTemplate)
+
+            try{
+                $mySelectedFiles = Get-ChildItem -Path $ArchiveFolder | Where-Object -Property Name -match $myZipPathTemplate | Sort-Object -Property LastWriteTime | Select-Object -SkipLast $KeepLatestFilesCount
+                Write-Output ("Removing archive files started.")
+                $mySelectedFiles | Remove-Item 
+                $mySelectedFiles | ForEach-Object{Write-Output ($_.Name + " is removed.")}
+                Write-Output ("Archive files removed.")
+            }catch{
+                Write-Error ($_.ToString()).ToString()
+            }
+        }else{
+            Write-Output ("Log to files is disabled.")
+        }
+        Write-Verbose "DeleteArchiveFiles finished."
     }
     #endregion
 }
