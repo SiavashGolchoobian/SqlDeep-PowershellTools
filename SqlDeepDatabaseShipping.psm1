@@ -1,7 +1,9 @@
-Using module .\SqlDeepDatabaseShippingEnums.psm1
-Using module .\SqlDeepLogWriterEnums.psm1
-Import-Module "$PSScriptRoot\SqlDeepLogWriter.psm1"
+Using module .\SqlDeepLogWriter.psm1
 
+enum DatabaseRecoveryMode {
+    RESTOREONLY
+    RECOVERY
+}
 enum DestinationDbStatus {
     Unknown = -10
     NotExist = -9
@@ -81,28 +83,23 @@ Class DatabaseShipping {
     [string]$FileRepositoryUncPath
     [int]$LimitMsdbScanToRecentDays=0
     [bool]$RestoreFilesToIndividualFolders=$true
-    [string]$DestinationRestoreMode="RESTOREONLY"
-    [string]$LogInstanceConnectionString
-    [string]$LogTableName="[dbo].[Events]"
-    [string]$LogFilePath
-    hidden [System.Object]$LogWriter
+    [DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY
+    hidden [LogWriter]$LogWriter
 
-    DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
-        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,30,$true,"RESTOREONLY",$LogInstanceConnectionString,$LogTableName,$LogFilePath)
+    DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[LogWriter]$LogWriter){
+        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,30,$true,[DatabaseRecoveryMode]::RESTOREONLY,$LogWriter)
     }
-    DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[string]$DestinationRestoreMode,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
-        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,$LimitMsdbScanToRecentDays,$RestoreFilesToIndividualFolders,$DestinationRestoreMode,$LogInstanceConnectionString,$LogTableName,$LogFilePath)
+    DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[DatabaseRecoveryMode]$DestinationRestoreMode,[LogWriter]$LogWriter){
+        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,$LimitMsdbScanToRecentDays,$RestoreFilesToIndividualFolders,$DestinationRestoreMode,$LogWriter)
     }
-    hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[string]$DestinationRestoreMode,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
+    hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[DatabaseRecoveryMode]$DestinationRestoreMode,[LogWriter]$LogWriter){
         $this.SourceInstanceConnectionString=$SourceInstanceConnectionString
         $this.DestinationInstanceConnectionString=$DestinationInstanceConnectionString
         $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($FileRepositoryUncPath)
         $this.LimitMsdbScanToRecentDays=$LimitMsdbScanToRecentDays
         $this.RestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
         $this.DestinationRestoreMode=$DestinationRestoreMode
-        $this.LogInstanceConnectionString=$LogInstanceConnectionString
-        $this.LogTableName=$LogTableName
-        $this.LogFilePath=$LogFilePath
+        $this.LogWriter=$LogWriter
     }
 #region Functions
     hidden [string]Path_CorrectFolderPathFormat ([string]$FolderPath) {    #Correcting folder path format
@@ -990,6 +987,8 @@ Class DatabaseShipping {
             USE [master];
             IF EXISTS (SELECT 1 FROM sys.databases WHERE name=N'"+$DatabaseName+"')
             BEGIN
+                IF EXISTS(SELECT 1 FROM sys.databases WHERE name=N'"+$DatabaseName+"' AND [state]=1)    --Destination database is in recovery mode
+                    RESTORE DATABASE [" + $DatabaseName + "] WITH RECOVERY;
                 ALTER DATABASE [" + $DatabaseName + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
                 DROP DATABASE [" + $DatabaseName + "];
             END
@@ -1146,6 +1145,9 @@ Class DatabaseShipping {
         Write-Verbose ("ShipAllUserDatabases with " + $DestinationSuffix + " suffix")
         [string]$myExludedDB="''"
         [string]$myDestinationDB=$null
+        [string]$myOriginalLogFilePath=$null
+
+        $myOriginalLogFilePath=$this.LogWriter.LogFilePath
         if ($null -ne $ExcludedList){
             foreach ($myExceptedDB in $ExcludedList){
                 $myExludedDB+=",'" + $myExceptedDB + "'"
@@ -1159,6 +1161,7 @@ Class DatabaseShipping {
             $myRecord=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
             if ($null -ne $myRecord) {
                 foreach ($mySourceDB in $myRecord){
+                    $this.LogWriter.LogFilePath=$myOriginalLogFilePath
                     $myDestinationDB=$mySourceDB+$DestinationSuffix
                     $this.ShipDatabase(($mySourceDB.name),$myDestinationDB)
                 }
@@ -1170,10 +1173,13 @@ Class DatabaseShipping {
     [void] ShipDatabases([string[]]$SourceDB,[string]$DestinationSuffix){   #Ship list of databases from source to destination
         Write-Verbose ("ShipDatabases("+ $SourceDB.Count.ToString() +") with " + $DestinationSuffix + " suffix")
         [string]$myDestinationDB=$null
+        [string]$myOriginalLogFilePath=$null
+
+        $myOriginalLogFilePath=$this.LogWriter.LogFilePath
         if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
         foreach ($mySourceDB in $SourceDB){
+            $this.LogWriter.LogFilePath=$myOriginalLogFilePath
             $myDestinationDB=$mySourceDB+$DestinationSuffix
-            $this.LogWriter=$null
             $this.ShipDatabase($mySourceDB,$myDestinationDB)
         }
     }
@@ -1181,8 +1187,8 @@ Class DatabaseShipping {
         try {
             #--=======================Initial Log Modules
             Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " started. =====")
-            $this.LogFilePath=($this.LogFilePath.Replace("{Database}",$DestinationDB))
-            $this.LogWriter=New-LogWriter -EventSource ($env:computername) -Module "DatabaseShipping" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
+            $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace("{Database}",$DestinationDB)
+            $this.LogWriter.Reinitialize
             $this.LogWriter.Write("===== Shipping process started... ===== ", [LogType]::INF) 
             $this.LogWriter.Write(("ShipDatabase " + $SourceDB + " as " + $DestinationDB), [LogType]::INF) 
             $this.LogWriter.Write("Initializing EventsTable.Create.", [LogType]::INF) 
@@ -1324,7 +1330,19 @@ Class DatabaseShipping {
             $this.LogWriter.Write("Run Restore Commands",[LogType]::INF)
             If ($null -ne $myRestoreList){
                 try{
-                    $myRestoreList | ForEach-Object{$this.LogWriter.Write(("Restore Command:" + $_.RestoreCommand),[LogType]::INF);Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query ($_.RestoreCommand) -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop}
+                    $myRestoreList | ForEach-Object{
+                                                        $this.LogWriter.Write(("Restore Command:" + $_.RestoreCommand),[LogType]::INF);
+                                                        try{
+                                                            Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query ($_.RestoreCommand) -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
+                                                        }catch{
+                                                            if ($_.ToString() -like "*Msg 4326, Level 16, State 1*") {     #log file is too early
+                                                                $this.LogWriter.Write(($_.ToString()).ToString(),[LogType]::WRN)
+                                                            }else{
+                                                                $this.LogWriter.Write(($_.ToString()).ToString(),[LogType]::ERR)
+                                                                throw
+                                                            }
+                                                        }
+                                                    }
                 }Catch{
                     $this.LogWriter.Write(($_.ToString()).ToString(),[LogType]::ERR)
                     throw
@@ -1372,9 +1390,7 @@ Function New-DatabaseShipping {
         [Parameter(Mandatory=$false)][int]$LimitMsdbScanToRecentDays=0,
         [Parameter(Mandatory=$false)][switch]$RestoreFilesToIndividualFolders,
         [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY,
-        [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
-        [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
-        [Parameter(Mandatory=$true)][string]$LogFilePath
+        [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
     Write-Verbose "Creating New-DatabaseShipping"
     [string]$mySourceInstanceConnectionString=$SourceInstanceConnectionString
@@ -1383,10 +1399,8 @@ Function New-DatabaseShipping {
     [int]$myLimitMsdbScanToRecentDays=$LimitMsdbScanToRecentDays
     [bool]$myRestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
     [DatabaseRecoveryMode]$myDestinationRestoreMode=$DestinationRestoreMode
-    [string]$myLogInstanceConnectionString=$LogInstanceConnectionString
-    [string]$myLogTableName=$LogTableName
-    [string]$myLogFilePath=$LogFilePath
-    [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentDays,$myRestoreFilesToIndividualFolders,$myDestinationRestoreMode,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)
+    [LogWriter]$myLogWriter=$LogWriter
+    [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentDays,$myRestoreFilesToIndividualFolders,$myDestinationRestoreMode,$myLogWriter)
     Write-Verbose "New-DatabaseShipping Created"
 }
 #endregion

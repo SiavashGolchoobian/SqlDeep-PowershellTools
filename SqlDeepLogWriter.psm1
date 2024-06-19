@@ -18,7 +18,18 @@
 
     Imports the script module and runs the Get-SomeData and Set-SomeData functions with the specified input and output files.
 #>
-Using module .\SqlDeepLogWriterEnums.psm1
+Enum LogType {
+    INF
+    WRN
+    ERR
+};
+Enum ArchiveTimeScale {
+    ByYear
+    ByMonth
+    ByDay
+    ByHour
+    ByTime
+};
 Class LogWriter {
     [string]$EventSource=$env:COMPUTERNAME
     [string]$Module="UNKNOWN"
@@ -49,6 +60,9 @@ Class LogWriter {
     }
     LogWriter([string]$EventSource,[string]$Module,[bool]$LogToConsole,[bool]$LogToFile,[string]$LogFilePath,[bool]$LogToTable,[string]$LogInstanceConnectionString,[string]$LogTableName){
         $this.Init($EventSource,$Module,$LogToConsole,$LogToFile,$LogFilePath,$LogToTable,$LogInstanceConnectionString,$LogTableName)
+    }
+    Reinitialize(){
+        $this.Init($this.EventSource,$this.Module,$this.LogToConsole,$this.LogToFile,$this.LogToTable,$this.LogInstanceConnectionString,$this.LogTableName)
     }
     hidden Init([string]$EventSource,[string]$Module,[bool]$LogToConsole,[bool]$LogToFile,[string]$LogFilePath,[bool]$LogToTable,[string]$LogInstanceConnectionString,[string]$LogTableName){
         $mySysToday = (Get-Date -Format "yyyyMMdd").ToString()

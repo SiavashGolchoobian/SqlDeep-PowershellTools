@@ -1,5 +1,4 @@
-Using module .\SqlDeepLogWriterEnums.psm1
-Import-Module "$PSScriptRoot\SqlDeepLogWriter.psm1"
+Using module .\SqlDeepLogWriter.psm1
 
 Class ConnectionSpecification{
     [string]$LoginName
@@ -73,30 +72,25 @@ Class SqlSysAdminAudit{
     [int]$LimitEventLogScanToRecentMinutes
     [string]$CentralTempInstanceConnectionString
     [string]$CurrentInstanceConnectionString
-    [string]$LogInstanceConnectionString
-    [string]$LogTableName="[dbo].[Events]"
-    [string]$LogFilePath
     [ConnectionSpecification[]]$AllowedUserConnections
     [ConnectionSpecification[]]$AllowedServiceConnections
     hidden [SecurityEvent[]]$SecurityEvents
     hidden [datetime]$ScanStartTime
-    hidden [System.Object]$LogWriter
+    hidden [LogWriter]$LogWriter
 
-    SqlSysAdminAudit([string]$CentralTempInstanceConnectionString,[string]$CurrentInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
-        $this.Init(10,$CentralTempInstanceConnectionString,$CurrentInstanceConnectionString,$AllowedUserConnections,$AllowedServiceConnections,$LogInstanceConnectionString,$LogTableName,$LogFilePath)
+    SqlSysAdminAudit([string]$CentralTempInstanceConnectionString,[string]$CurrentInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[LogWriter]$LogWriter){
+        $this.Init(10,$CentralTempInstanceConnectionString,$CurrentInstanceConnectionString,$AllowedUserConnections,$AllowedServiceConnections,$LogWriter)
     }
-    SqlSysAdminAudit([int]$LimitEventLogScanToRecentMinutes,[string]$CentralTempInstanceConnectionString,[string]$CurrentInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
-        $this.Init($LimitEventLogScanToRecentMinutes,$CentralTempInstanceConnectionString,$CurrentInstanceConnectionString,$AllowedUserConnections,$AllowedServiceConnections,$LogInstanceConnectionString,$LogTableName,$LogFilePath)
+    SqlSysAdminAudit([int]$LimitEventLogScanToRecentMinutes,[string]$CentralTempInstanceConnectionString,[string]$CurrentInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[LogWriter]$LogWriter){
+        $this.Init($LimitEventLogScanToRecentMinutes,$CentralTempInstanceConnectionString,$CurrentInstanceConnectionString,$AllowedUserConnections,$AllowedServiceConnections,$LogWriter)
     }
-    hidden Init([int]$LimitEventLogScanToRecentMinutes,[string]$CentralTempInstanceConnectionString,[string]$CurrentInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
+    hidden Init([int]$LimitEventLogScanToRecentMinutes,[string]$CentralTempInstanceConnectionString,[string]$CurrentInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[LogWriter]$LogWriter){
         $this.LimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
         $this.CentralTempInstanceConnectionString=$CentralTempInstanceConnectionString
         $this.CurrentInstanceConnectionString=$CurrentInstanceConnectionString
         $this.AllowedUserConnections=$AllowedUserConnections
         $this.AllowedServiceConnections=$AllowedServiceConnections
-        $this.LogInstanceConnectionString=$LogInstanceConnectionString
-        $this.LogTableName=$LogTableName
-        $this.LogFilePath=$LogFilePath
+        $this.LogWriter=$LogWriter
         $this.SecurityEvents=$null
     }
 
@@ -348,7 +342,7 @@ Class SqlSysAdminAudit{
                 $this.LogWriter.Write("Query to detect login attemts in unusual times executed.",[LogType]::INF)
                 if ($null -ne $myRecords){
                     $this.LogWriter.Write("There is "+ $myRecords.Count.ToString()+" Alarms found.",[LogType]::INF)
-                    $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module "SqlSysAdminLogin" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
+                    $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module ($this.LogWriter.Module + ":LoginAlarm") -LogToConsole ($this.LogWriter.LogToConsole) -LogToFile ($this.LogWriter.LogToFile) -LogFilePath ($this.LogWriter.LogFilePath) -LogToTable ($this.LogWriter.LogToTable) -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName (($this.LogWriter.LogTableName))
                     foreach ($myRecord in $myRecords){
                         $myAlarmWriter.Write($myRecord.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
                     }
@@ -391,7 +385,6 @@ Class SqlSysAdminAudit{
         try {
             #--=======================Initial Log Modules
             Write-Verbose ("===== SqlSysAdminAudit process started. =====")
-            $this.LogWriter=New-LogWriter -EventSource ($env:computername) -Module "SqlSysAdminAudit" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
             $this.LogWriter.Write("===== SqlSysAdminAudit process started... ===== ", [LogType]::INF) 
             $this.CollectEvents()       #-----Retrive Successful Logins
             $this.SaveEvents()          #-----Insert Event Logs to a table
@@ -407,33 +400,27 @@ Class SqlSysAdminAudit{
     }
     #endregion
 }
-
 Class OsLoginAudit{
     [int]$LimitEventLogScanToRecentMinutes
     [string]$CentralTempInstanceConnectionString
-    [string]$LogInstanceConnectionString
-    [string]$LogTableName="[dbo].[Events]"
-    [string]$LogFilePath
     [ConnectionSpecification[]]$AllowedUserConnections
     [ConnectionSpecification[]]$AllowedServiceConnections
     hidden [SecurityEvent[]]$SecurityEvents
     hidden [datetime]$ScanStartTime
-    hidden [System.Object]$LogWriter
+    hidden [LogWriter]$LogWriter
 
-    OsLoginAudit([string]$CentralTempInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
-        $this.Init(10,$CentralTempInstanceConnectionString,$AllowedUserConnections,$AllowedServiceConnections,$LogInstanceConnectionString,$LogTableName,$LogFilePath)
+    OsLoginAudit([string]$CentralTempInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[LogWriter]$LogWriter){
+        $this.Init(10,$CentralTempInstanceConnectionString,$AllowedUserConnections,$AllowedServiceConnections,$LogWriter)
     }
-    OsLoginAudit([int]$LimitEventLogScanToRecentMinutes,[string]$CentralTempInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
-        $this.Init($LimitEventLogScanToRecentMinutes,$CentralTempInstanceConnectionString,$AllowedUserConnections,$AllowedServiceConnections,$LogInstanceConnectionString,$LogTableName,$LogFilePath)
+    OsLoginAudit([int]$LimitEventLogScanToRecentMinutes,[string]$CentralTempInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[LogWriter]$LogWriter){
+        $this.Init($LimitEventLogScanToRecentMinutes,$CentralTempInstanceConnectionString,$AllowedUserConnections,$AllowedServiceConnections,$LogWriter)
     }
-    hidden Init([int]$LimitEventLogScanToRecentMinutes,[string]$CentralTempInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[string]$LogInstanceConnectionString,[string]$LogTableName,[string]$LogFilePath){
+    hidden Init([int]$LimitEventLogScanToRecentMinutes,[string]$CentralTempInstanceConnectionString,[ConnectionSpecification[]]$AllowedUserConnections,[ConnectionSpecification[]]$AllowedServiceConnections,[LogWriter]$LogWriter){
         $this.LimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
         $this.CentralTempInstanceConnectionString=$CentralTempInstanceConnectionString
         $this.AllowedUserConnections=$AllowedUserConnections
         $this.AllowedServiceConnections=$AllowedServiceConnections
-        $this.LogInstanceConnectionString=$LogInstanceConnectionString
-        $this.LogTableName=$LogTableName
-        $this.LogFilePath=$LogFilePath
+        $this.LogWriter=$LogWriter
         $this.SecurityEvents=$null
     }
     #region Functions
@@ -648,7 +635,7 @@ Class OsLoginAudit{
                 $this.LogWriter.Write("Query to detect login attemts in unusual times executed.",[LogType]::INF)
                 if ($null -ne $myRecords){
                     $this.LogWriter.Write("There is "+ $myRecords.Count.ToString()+" Alarms found.",[LogType]::INF)
-                    $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module "OsLogin" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
+                    $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module ($this.LogWriter.Module + ":LoginAlarm") -LogToConsole ($this.LogWriter.LogToConsole) -LogToFile ($this.LogWriter.LogToFile) -LogFilePath ($this.LogWriter.LogFilePath) -LogToTable ($this.LogWriter.LogToTable) -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName (($this.LogWriter.LogTableName))
                     foreach ($myRecord in $myRecords){
                         $myAlarmWriter.Write($myRecord.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
                     }
@@ -666,7 +653,6 @@ Class OsLoginAudit{
         try {
             #--=======================Initial Log Modules
             Write-Verbose ("===== OsLoginAudit process started. =====")
-            $this.LogWriter=New-LogWriter -EventSource ($env:computername) -Module "OsLoginAudit" -LogToConsole -LogToFile -LogFilePath ($this.LogFilePath) -LogToTable -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName ($this.LogTableName)
             $this.LogWriter.Write("===== OsLoginAudit process started... ===== ", [LogType]::INF) 
             $this.CollectEvents()       #-----Retrive Successful Logins
             $this.SaveEvents()          #-----Insert Event Logs to a table
@@ -690,9 +676,7 @@ Function New-SqlSysAdminAudit {
         [Parameter(Mandatory=$true)][string]$CurrentInstanceConnectionString,
         [Parameter(Mandatory=$true)][ConnectionSpecification[]]$AllowedUserConnections,
         [Parameter(Mandatory=$true)][ConnectionSpecification[]]$AllowedServiceConnections,
-        [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
-        [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
-        [Parameter(Mandatory=$true)][string]$LogFilePath
+        [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
     Write-Verbose "Creating New-SqlSysAdminAudit"
     [int]$myLimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
@@ -700,10 +684,8 @@ Function New-SqlSysAdminAudit {
     [string]$myCurrentInstanceConnectionString=$CurrentInstanceConnectionString
     [ConnectionSpecification[]]$myAllowedUserConnections=$AllowedUserConnections
     [ConnectionSpecification[]]$myAllowedServiceConnections=$AllowedServiceConnections
-    [string]$myLogInstanceConnectionString=$LogInstanceConnectionString
-    [string]$myLogTableName=$LogTableName
-    [string]$myLogFilePath=$LogFilePath
-    [SqlSysAdminAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myCurrentInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)
+    [LogWriter]$myLogWriter=$LogWriter
+    [SqlSysAdminAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myCurrentInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogWriter)
     Write-Verbose "New-SqlSysAdminAudit Created"
 }
 Function New-SqlSysAdminAuditByJsonConnSpec {
@@ -713,9 +695,7 @@ Function New-SqlSysAdminAuditByJsonConnSpec {
         [Parameter(Mandatory=$true)][string]$CurrentInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$AllowedUserConnectionsJson,
         [Parameter(Mandatory=$true)][string]$AllowedServiceConnectionsJson,
-        [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
-        [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
-        [Parameter(Mandatory=$true)][string]$LogFilePath
+        [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
     Write-Verbose "Creating New-SqlSysAdminAuditByJsonConnSpec"
     [int]$myLimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
@@ -723,9 +703,7 @@ Function New-SqlSysAdminAuditByJsonConnSpec {
     [string]$myCurrentInstanceConnectionString=$CurrentInstanceConnectionString
     [ConnectionSpecification[]]$myAllowedUserConnections=$null
     [ConnectionSpecification[]]$myAllowedServiceConnections=$null
-    [string]$myLogInstanceConnectionString=$LogInstanceConnectionString
-    [string]$myLogTableName=$LogTableName
-    [string]$myLogFilePath=$LogFilePath
+    [LogWriter]$myLogWriter=$LogWriter
     [SqlSysAdminAudit]$myAnswer=$null
 
     try {
@@ -744,7 +722,7 @@ Function New-SqlSysAdminAuditByJsonConnSpec {
             }
             $myAllowedServiceConnections=$myAllowedServiceConnectionCollection.ToArray([ConnectionSpecification])
         )
-        $myAnswer=[SqlSysAdminAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myCurrentInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)    
+        $myAnswer=[SqlSysAdminAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myCurrentInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogWriter)    
     }
     catch {
         Write-Verbose ($_.ToString())
@@ -758,19 +736,15 @@ Function New-OsLoginAudit {
         [Parameter(Mandatory=$true)][string]$CentralTempInstanceConnectionString,
         [Parameter(Mandatory=$true)][ConnectionSpecification[]]$AllowedUserConnections,
         [Parameter(Mandatory=$true)][ConnectionSpecification[]]$AllowedServiceConnections,
-        [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
-        [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
-        [Parameter(Mandatory=$true)][string]$LogFilePath
+        [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
     Write-Verbose "Creating New-OsLoginAudit"
     [int]$myLimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
     [string]$myCentralTempInstanceConnectionString=$CentralTempInstanceConnectionString
     [ConnectionSpecification[]]$myAllowedUserConnections=$AllowedUserConnections
     [ConnectionSpecification[]]$myAllowedServiceConnections=$AllowedServiceConnections
-    [string]$myLogInstanceConnectionString=$LogInstanceConnectionString
-    [string]$myLogTableName=$LogTableName
-    [string]$myLogFilePath=$LogFilePath
-    [OsLoginAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)
+    [LogWriter]$myLogWriter=$LogWriter
+    [OsLoginAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogWriter)
     Write-Verbose "New-OsLoginAudit Created"
 }
 Function New-OsLoginAuditByJsonConnSpec {
@@ -779,18 +753,14 @@ Function New-OsLoginAuditByJsonConnSpec {
         [Parameter(Mandatory=$true)][string]$CentralTempInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$AllowedUserConnectionsJson,
         [Parameter(Mandatory=$true)][string]$AllowedServiceConnectionsJson,
-        [Parameter(Mandatory=$true)][string]$LogInstanceConnectionString,
-        [Parameter(Mandatory=$false)][string]$LogTableName="[dbo].[Events]",
-        [Parameter(Mandatory=$true)][string]$LogFilePath
+        [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
     Write-Verbose "Creating New-OsLoginAuditByJsonConnSpec"
     [int]$myLimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
     [string]$myCentralTempInstanceConnectionString=$CentralTempInstanceConnectionString
     [ConnectionSpecification[]]$myAllowedUserConnections=$null
     [ConnectionSpecification[]]$myAllowedServiceConnections=$null
-    [string]$myLogInstanceConnectionString=$LogInstanceConnectionString
-    [string]$myLogTableName=$LogTableName
-    [string]$myLogFilePath=$LogFilePath
+    [LogWriter]$myLogWriter=$LogWriter
     [OsLoginAudit]$myAnswer=$null
 
     try {
@@ -809,7 +779,7 @@ Function New-OsLoginAuditByJsonConnSpec {
             }
             $myAllowedServiceConnections=$myAllowedServiceConnectionCollection.ToArray([ConnectionSpecification])
         )
-        $myAnswer=[OsLoginAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogInstanceConnectionString,$myLogTableName,$myLogFilePath)    
+        $myAnswer=[OsLoginAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogWriter)    
     }
     catch {
         Write-Verbose ($_.ToString())
