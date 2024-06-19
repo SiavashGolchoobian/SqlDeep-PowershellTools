@@ -1,4 +1,6 @@
-Import-Module "$PSScriptRoot\SqlDeepAudit.psm1"
+Using module .\SqlDeepLogWriter.psm1
+Using module .\SqlDeepAudit.psm1
+
 [string]$myAllowedServiceConnectionsJson='
 [
     {
@@ -29,9 +31,12 @@ Import-Module "$PSScriptRoot\SqlDeepAudit.psm1"
     }
 ]
 '
-
-$mySqlSysAdminAudit=New-SqlSysAdminAuditByJsonConnSpec -LimitEventLogScanToRecentMinutes 5 -CentralTempInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=Tempdb;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -CurrentInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=SqlDeep;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -AllowedUserConnectionsJson $myAllowedUserConnectionsJson -AllowedServiceConnectionsJson $myAllowedServiceConnectionsJson -LogInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogFilePath "U:\Install\Scripts\Ocasions\SqlDeep-Tools\Test_{Date}.txt" -Verbose
+#SqlSysAdminAudit
+$myLogWriter=New-LogWriter -EventSource ($env:computername) -Module "SqlSysAdminAudit" -LogToConsole -LogToFile -LogFilePath "U:\Audit\SqlSysAdminAudit_{Date}.txt" -LogToTable -LogInstanceConnectionString "Data Source=DB-MN-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogTableName "[dbo].[Events]"
+$mySqlSysAdminAudit=New-SqlSysAdminAuditByJsonConnSpec -LimitEventLogScanToRecentMinutes 5 -CentralTempInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=Tempdb;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -CurrentInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=SqlDeep;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -AllowedUserConnectionsJson $myAllowedUserConnectionsJson -AllowedServiceConnectionsJson $myAllowedServiceConnectionsJson -LogWrite $myLogWriter -Verbose
 $mySqlSysAdminAudit.AnalyzeEvents()
 
-$myOsLoginAudit=New-OsLoginAuditByJsonConnSpec -LimitEventLogScanToRecentMinutes 5 -CentralTempInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=Tempdb;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -CurrentInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=SqlDeep;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -AllowedUserConnectionsJson $myAllowedUserConnectionsJson -AllowedServiceConnectionsJson $myAllowedServiceConnectionsJson -LogInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogFilePath "U:\Install\Scripts\Ocasions\SqlDeep-Tools\Test_{Date}.txt" -Verbose
+#OsLoginAudit
+$myLogWriter=New-LogWriter -EventSource ($env:computername) -Module "OsLoginAudit" -LogToConsole -LogToFile -LogFilePath "U:\Audit\OsLoginAudit_{Date}.txt" -LogToTable -LogInstanceConnectionString "Data Source=DB-MN-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogTableName "[dbo].[Events]"
+$myOsLoginAudit=New-OsLoginAuditByJsonConnSpec -LimitEventLogScanToRecentMinutes 5 -CentralTempInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=Tempdb;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -CurrentInstanceConnectionString "Data Source=DB-MN-DLV01.SqlDeep.local\NODE,49149;Initial Catalog=SqlDeep;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -AllowedUserConnectionsJson $myAllowedUserConnectionsJson -AllowedServiceConnectionsJson $myAllowedServiceConnectionsJson -LogWrite $myLogWriter -Verbose
 $myOsLoginAudit.AnalyzeEvents()
