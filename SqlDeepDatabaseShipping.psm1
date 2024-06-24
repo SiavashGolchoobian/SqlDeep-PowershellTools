@@ -948,6 +948,7 @@ Class DatabaseShipping {
         DROP FUNCTION dbo.fn_FileExists;   
         "
         try{
+            #$this.LogWriter.Write($myCommand,[LogType]::INF)
             $this.LogWriter.Write("Query Backupfiles list.",[LogType]::INF)
             [System.Data.DataRow[]]$myRecords=$null
             $myRecords=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
@@ -1143,27 +1144,28 @@ Class DatabaseShipping {
     }
     [void] ShipAllUserDatabases([string]$DestinationSuffix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
         Write-Verbose ("ShipAllUserDatabases with " + $DestinationSuffix + " suffix")
-        [string]$myExludedDB="''"
+        $this.LogWriter.Write(("ShipAllUserDatabases with " + $DestinationSuffix + " suffix"),[LogType]::INF)
+        [string]$myExludedDB=""
         [string]$myDestinationDB=$null
         [string]$myOriginalLogFilePath=$null
 
         $myOriginalLogFilePath=$this.LogWriter.LogFilePath
         if ($null -ne $ExcludedList){
             foreach ($myExceptedDB in $ExcludedList){
-                $myExludedDB+=",'" + $myExceptedDB + "'"
+                $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
             }
         }
         if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
         [string]$myCommand="
-            SELECT [name] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','distribution',"+$myExludedDB+")
+            SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+")
             "
         try{
             $myRecord=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
             if ($null -ne $myRecord) {
                 foreach ($mySourceDB in $myRecord){
                     $this.LogWriter.LogFilePath=$myOriginalLogFilePath
-                    $myDestinationDB=$mySourceDB+$DestinationSuffix
-                    $this.ShipDatabase(($mySourceDB.name),$myDestinationDB)
+                    $myDestinationDB=$mySourceDB.DbName+$DestinationSuffix
+                    $this.ShipDatabase(($mySourceDB.DbName),$myDestinationDB)
                 }
             }
         }Catch{
@@ -1177,10 +1179,12 @@ Class DatabaseShipping {
 
         $myOriginalLogFilePath=$this.LogWriter.LogFilePath
         if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
-        foreach ($mySourceDB in $SourceDB){
-            $this.LogWriter.LogFilePath=$myOriginalLogFilePath
-            $myDestinationDB=$mySourceDB+$DestinationSuffix
-            $this.ShipDatabase($mySourceDB,$myDestinationDB)
+        if ($null -ne $SourceDB){
+            foreach ($mySourceDB in $SourceDB){
+                $this.LogWriter.LogFilePath=$myOriginalLogFilePath
+                $myDestinationDB=$mySourceDB+$DestinationSuffix
+                $this.ShipDatabase($mySourceDB,$myDestinationDB)
+            }
         }
     }
     [void] ShipDatabase([string]$SourceDB,[string]$DestinationDB){  #Ship a databases from source to destination
