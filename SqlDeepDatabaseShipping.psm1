@@ -81,23 +81,24 @@ Class DatabaseShipping {
     [string]$SourceInstanceConnectionString
     [string]$DestinationInstanceConnectionString
     [string]$FileRepositoryUncPath
-    [int]$LimitMsdbScanToRecentDays=0
+    [int]$LimitMsdbScanToRecentHours=31*24
     [bool]$RestoreFilesToIndividualFolders=$true
     [DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY
     [RestoreStrategy[]]$PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
+    [bool]$SkipBackupFilesExistenceCheck=$false
     hidden [LogWriter]$LogWriter
 
     DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[LogWriter]$LogWriter){
-        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,30,$true,[DatabaseRecoveryMode]::RESTOREONLY,$LogWriter)
+        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,(31*24),$true,[DatabaseRecoveryMode]::RESTOREONLY,$LogWriter)
     }
-    DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[DatabaseRecoveryMode]$DestinationRestoreMode,[LogWriter]$LogWriter){
-        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,$LimitMsdbScanToRecentDays,$RestoreFilesToIndividualFolders,$DestinationRestoreMode,$LogWriter)
+    DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentHours,[bool]$RestoreFilesToIndividualFolders,[DatabaseRecoveryMode]$DestinationRestoreMode,[LogWriter]$LogWriter){
+        $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,$LimitMsdbScanToRecentHours,$RestoreFilesToIndividualFolders,$DestinationRestoreMode,$LogWriter)
     }
-    hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentDays,[bool]$RestoreFilesToIndividualFolders,[DatabaseRecoveryMode]$DestinationRestoreMode,[LogWriter]$LogWriter){
+    hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentHours,[bool]$RestoreFilesToIndividualFolders,[DatabaseRecoveryMode]$DestinationRestoreMode,[LogWriter]$LogWriter){
         $this.SourceInstanceConnectionString=$SourceInstanceConnectionString
         $this.DestinationInstanceConnectionString=$DestinationInstanceConnectionString
         $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($FileRepositoryUncPath)
-        $this.LimitMsdbScanToRecentDays=$LimitMsdbScanToRecentDays
+        $this.LimitMsdbScanToRecentHours=$LimitMsdbScanToRecentHours
         $this.RestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
         $this.DestinationRestoreMode=$DestinationRestoreMode
         $this.LogWriter=$LogWriter
@@ -216,9 +217,15 @@ Class DatabaseShipping {
             throw "Source server name is empty."
         }
 
+        # Generate acceptable strategies list for TSQL
+        $this.LogWriter.Write("Determine PreferredStrategies started.",[LogType]::INF)
         [string]$myAcceptedStrategies=""
-        if ($LatestLSN -eq 0 -and $DiffBackupBaseLsn -eq 0){
-            [RestoreStrategy[]]$Strategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog
+        if ($LatestLSN -eq 0 -and $DiffBackupBaseLsn -eq 0){    #In this case Diff and Log backups are not usable and we should use strategies containes Full backup files
+            [RestoreStrategy[]]$Strategies=$null
+            $Strategies = $this.PreferredStrategies | Where-Object -Property value__ -NotIn ( ([RestoreStrategy]::DiffLog).value__ , ([RestoreStrategy]::Log).value__ ) #Removing any non-full backup strategies from list
+            if (!($Strategies -contains [RestoreStrategy]::FullDiffLog) -and !($this.PreferredStrategies -contains [RestoreStrategy]::FullLog)){    #Add all full backup strategies to the list, if there is not atleast one full backup strategy found in the list
+                $Strategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog
+            }
             $myAcceptedStrategies=$this.Get_StrategiesToString($Strategies)
         }else{
             $myAcceptedStrategies=$this.Get_StrategiesToString($this.PreferredStrategies)
@@ -229,6 +236,15 @@ Class DatabaseShipping {
             throw "PreferredStrategies is empty."
         }
 
+        # Generate FileExistenceCheck command
+        $this.LogWriter.Write("Determine File Existence Check according to SkipBackupFilesExistenceCheck started.",[LogType]::INF)
+        [string]$myBackupFileExistenceCheckCommand=""
+        if ($this.SkipBackupFilesExistenceCheck){
+            $myBackupFileExistenceCheckCommand="CAST(1 AS BIT) AS IsFilesExists"
+        }else{
+            $myBackupFileExistenceCheckCommand="CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists"
+        }
+
         [string]$myCommand = "
         USE [tempdb];
         DECLARE @myDBName AS NVARCHAR(255);
@@ -236,13 +252,13 @@ Class DatabaseShipping {
         DECLARE @myDiffBackupBaseLsn NUMERIC(25,0);
         DECLARE @myRecoveryDate AS NVARCHAR(50);
         DECLARE @myLowerBoundOfFileScan DATETIME;
-        DECLARE @myNumberOfDaysToScan INT;
+        DECLARE @myNumberOfHoursToScan INT;
         SET @myDBName=N'"+ $DatabaseName + "';
         SET @myLatestLsn="+ $LatestLSN.ToString() + ";
         SET @myDiffBackupBaseLsn="+ $DiffBackupBaseLsn.ToString() + ";
-        SET @myNumberOfDaysToScan="+ $this.LimitMsdbScanToRecentDays.ToString() +";
+        SET @myNumberOfHoursToScan="+ $this.LimitMsdbScanToRecentHours.ToString() +";
         SET @myRecoveryDate = getdate();
-        SET @myLowerBoundOfFileScan= CASE WHEN @myNumberOfDaysToScan=0 THEN CAST('1753-01-01' AS DATETIME) ELSE CAST(DATEADD(DAY,-1*ABS(@myNumberOfDaysToScan),GETDATE()) AS DATE) END
+        SET @myLowerBoundOfFileScan= CASE WHEN @myNumberOfHoursToScan=0 THEN CAST('1753-01-01' AS DATETIME) ELSE CAST(DATEADD(HOUR,-1*ABS(@myNumberOfHoursToScan),GETDATE()) AS DATE) END
         -------------------------------------------Create required functions in tempdb
         IF NOT EXISTS (SELECT 1 FROM [tempdb].[sys].[all_objects] WHERE type='FN' AND name = 'fn_FileExists')
         BEGIN
@@ -344,7 +360,7 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        "+$myBackupFileExistenceCheckCommand+"
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
                     GROUP BY
@@ -387,7 +403,7 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        "+$myBackupFileExistenceCheckCommand+"
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
                     GROUP BY
@@ -434,7 +450,7 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        "+$myBackupFileExistenceCheckCommand+"
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
                     GROUP BY
@@ -557,7 +573,7 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        "+$myBackupFileExistenceCheckCommand+"
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
                         LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
@@ -600,7 +616,7 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        "+$myBackupFileExistenceCheckCommand+"
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
                         LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
@@ -710,7 +726,7 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        "+$myBackupFileExistenceCheckCommand+"
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
                         LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
@@ -754,7 +770,7 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        "+$myBackupFileExistenceCheckCommand+"
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
                         LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
@@ -865,7 +881,7 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        "+$myBackupFileExistenceCheckCommand+"
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
                         LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
@@ -1429,6 +1445,7 @@ Class DatabaseShipping {
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
         }finally{
             Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished. =====")
+            $this.LogWriter.Write(("ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished."), [LogType]::INF) 
             if ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -eq 0) {
                 $this.LogWriter.Write("Finished.",[LogType]::INF)
             }elseif ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -gt 0) {
@@ -1448,7 +1465,7 @@ Function New-DatabaseShipping {
         [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$DestinationInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$FileRepositoryUncPath,
-        [Parameter(Mandatory=$false)][int]$LimitMsdbScanToRecentDays=0,
+        [Parameter(Mandatory=$false)][int]$LimitMsdbScanToRecentHours=31*24,
         [Parameter(Mandatory=$false)][switch]$RestoreFilesToIndividualFolders,
         [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
@@ -1457,11 +1474,11 @@ Function New-DatabaseShipping {
     [string]$mySourceInstanceConnectionString=$SourceInstanceConnectionString
     [string]$myDestinationInstanceConnectionString=$DestinationInstanceConnectionString
     [string]$myFileRepositoryUncPath=$FileRepositoryUncPath
-    [int]$myLimitMsdbScanToRecentDays=$LimitMsdbScanToRecentDays
+    [int]$myLimitMsdbScanToRecentHours=$LimitMsdbScanToRecentHours
     [bool]$myRestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
     [DatabaseRecoveryMode]$myDestinationRestoreMode=$DestinationRestoreMode
     [LogWriter]$myLogWriter=$LogWriter
-    [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentDays,$myRestoreFilesToIndividualFolders,$myDestinationRestoreMode,$myLogWriter)
+    [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentHours,$myRestoreFilesToIndividualFolders,$myDestinationRestoreMode,$myLogWriter)
     Write-Verbose "New-DatabaseShipping Created"
 }
 #endregion
