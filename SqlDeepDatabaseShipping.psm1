@@ -84,6 +84,7 @@ Class DatabaseShipping {
     [int]$LimitMsdbScanToRecentDays=0
     [bool]$RestoreFilesToIndividualFolders=$true
     [DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY
+    [RestoreStrategy[]]$PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
     hidden [LogWriter]$LogWriter
 
     DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[LogWriter]$LogWriter){
@@ -203,6 +204,14 @@ Class DatabaseShipping {
             throw "Source server name is empty."
         }
 
+        [string]$myAcceptedStrategies=""
+        $this.PreferredStrategies | ForEach-Object{$myAcceptedStrategies+=($_.value__).ToString()+","}
+        if ($myAcceptedStrategies[-1] -eq ",") {$myAcceptedStrategies=$myAcceptedStrategies.Substring(0,$myAcceptedStrategies.Length-1)}
+        if ($null -eq $myAcceptedStrategies -or $myAcceptedStrategies.Trim().Length -eq 0) {
+            $this.LogWriter.Write("PreferedStrategies is empty.",[LogType]::ERR)
+            throw "PreferedStrategies is empty."
+        }
+
         [string]$myCommand = "
         USE [tempdb];
         DECLARE @myDBName AS NVARCHAR(255);
@@ -234,6 +243,12 @@ Class DatabaseShipping {
             EXEC sp_executesql @myStatement;
         END
         -------------------------------------------Extract Files with Grater than or equal LSN
+        CREATE TABLE #myFileExistCache 
+        (
+            MediaSetId INT,
+            IsFilesExists BIT DEFAULT(1),
+            INDEX myFileExistCacheUNQ UNIQUE CLUSTERED (MediaSetId) WITH (IGNORE_DUP_KEY=ON)
+        );
         CREATE TABLE #myResult
         (
             ID INT IDENTITY,
@@ -325,6 +340,9 @@ Class DatabaseShipping {
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
+                AND 1 IN (" + $myAcceptedStrategies + ")
+            
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
         ----------------------Step1.2:	Extract latest existed and related incremental backups
         IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=1 AND BackupType='D')
         BEGIN
@@ -364,7 +382,9 @@ Class DatabaseShipping {
                 AND [myBackupset].[type] = 'I'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
+                AND 1 IN (" + $myAcceptedStrategies + ")
 
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
             DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='D' AND CheckpointLsn NOT IN (SELECT DatabaseBackupLsn FROM #myResult WHERE StrategyNo=1 AND BackupType='I' GROUP BY DatabaseBackupLsn)	--Delete full backups without any available incremental backups
             IF NOT EXISTS (SELECT 1 FROM #myResult WHERE StrategyNo=1 AND BackupType IN ('D'))
                 DELETE FROM #myResult WHERE StrategyNo=1
@@ -414,7 +434,9 @@ Class DatabaseShipping {
                     OR
                     (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     )
+                AND 1 IN (" + $myAcceptedStrategies + ")
             
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
             UPDATE #myResult SET IsContiguous=1 WHERE StrategyNo=1 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=1 AND BackupType='L')	    --First log file is not uncontiguous
             DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=1 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
             DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='I' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=1 AND BackupType='L')	--Delete differential backups without continious log backup chain
@@ -518,9 +540,10 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                        LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
                     GROUP BY
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
@@ -531,6 +554,9 @@ Class DatabaseShipping {
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
+                AND 2 IN (" + $myAcceptedStrategies + ")
+            
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
         ----------------------Step2.2:	Extract all log backups after that full backup
         IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=2)
         BEGIN
@@ -557,9 +583,10 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                        LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
                     GROUP BY
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
@@ -574,7 +601,9 @@ Class DatabaseShipping {
                     OR
                     (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     )
+                AND 2 IN (" + $myAcceptedStrategies + ")
             
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
             UPDATE #myResult SET IsContiguous=1 WHERE StrategyNo=2 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=2 AND BackupType='L')	    --First log file is not uncontiguous
             DELETE FROM #myResult WHERE StrategyNo=2 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=2 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
             DELETE FROM #myResult WHERE StrategyNo=2 AND BackupType='D' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=2 AND BackupType='L')	--Delete full backups without continious log backup chain
@@ -664,9 +693,10 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                        LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
                     GROUP BY
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
@@ -678,6 +708,9 @@ Class DatabaseShipping {
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[database_backup_lsn]=@myDiffBackupBaseLsn
                 AND CASE WHEN @myDiffBackupBaseLsn = 0 THEN @myLowerBoundOfFileScan ELSE [myBackupset].[backup_start_date] END >= @myLowerBoundOfFileScan
+                AND 3 IN (" + $myAcceptedStrategies + ")
+            
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
         ----------------------Step3.2:	Extract all log backups after that incremental backup
         IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=3)
         BEGIN
@@ -704,9 +737,10 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                        LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
                     GROUP BY
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
@@ -721,7 +755,9 @@ Class DatabaseShipping {
                     OR
                     (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=3) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     )
+                AND 3 IN (" + $myAcceptedStrategies + ")
             
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
             UPDATE #myResult SET IsContiguous=3 WHERE StrategyNo=1 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=3 AND BackupType='L')	    --First log file is not uncontiguous
             DELETE FROM #myResult WHERE StrategyNo=3 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=3 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
             DELETE FROM #myResult WHERE StrategyNo=3 AND BackupType='I' AND LastLsn < (SELECT MIN(FirstLsn) FROM #myResult WHERE StrategyNo=3 AND BackupType='L')	--Delete differential backups without continious log backup chain
@@ -812,9 +848,10 @@ Class DatabaseShipping {
                     SELECT
                         [myBackupFamily].[media_set_id],
                         Count(1) AS BackupFileCount,
-                        CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
+                        CAST(MIN(CASE WHEN ISNULL([myCache].[IsFilesExists],[tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name]))=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists
                     FROM
                         [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                        LEFT OUTER JOIN #myFileExistCache AS myCache ON [myCache].[MediaSetId]=[myBackupFamily].[media_set_id]
                     GROUP BY
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
@@ -830,7 +867,9 @@ Class DatabaseShipping {
                     OR
                     [myBackupset].[first_lsn] >= @myLatestLsn
                     )
+                AND 4 IN (" + $myAcceptedStrategies + ")
             
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
             UPDATE #myResult SET IsContiguous=1 WHERE StrategyNo=4 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=4 AND BackupType='L')	    --First log file is not uncontiguous
             DELETE FROM #myResult WHERE StrategyNo=4 AND BackupType='L' AND ID <= (SELECT MAX(ID) FROM #myResult WHERE StrategyNo=4 AND BackupType='L' AND IsContiguous=0)	--Delete log backups without continious chain
         ----------------------Step4.2:	Generate Roadmaps
@@ -945,9 +984,11 @@ Class DatabaseShipping {
         DROP TABLE #mySolutions;
         DROP TABLE #myRoadMaps;
         DROP TABLE #myResult;
+        DROP TABLE #myFileExistCache;
         DROP FUNCTION dbo.fn_FileExists;   
         "
         try{
+            #$this.LogWriter.Write($myCommand,[LogType]::INF)
             $this.LogWriter.Write("Query Backupfiles list.",[LogType]::INF)
             [System.Data.DataRow[]]$myRecords=$null
             $myRecords=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
@@ -1143,27 +1184,28 @@ Class DatabaseShipping {
     }
     [void] ShipAllUserDatabases([string]$DestinationSuffix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
         Write-Verbose ("ShipAllUserDatabases with " + $DestinationSuffix + " suffix")
-        [string]$myExludedDB="''"
+        $this.LogWriter.Write(("ShipAllUserDatabases with " + $DestinationSuffix + " suffix"),[LogType]::INF)
+        [string]$myExludedDB=""
         [string]$myDestinationDB=$null
         [string]$myOriginalLogFilePath=$null
 
         $myOriginalLogFilePath=$this.LogWriter.LogFilePath
         if ($null -ne $ExcludedList){
             foreach ($myExceptedDB in $ExcludedList){
-                $myExludedDB+=",'" + $myExceptedDB + "'"
+                $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
             }
         }
         if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
         [string]$myCommand="
-            SELECT [name] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','distribution',"+$myExludedDB+")
+            SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+")
             "
         try{
             $myRecord=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
             if ($null -ne $myRecord) {
                 foreach ($mySourceDB in $myRecord){
                     $this.LogWriter.LogFilePath=$myOriginalLogFilePath
-                    $myDestinationDB=$mySourceDB+$DestinationSuffix
-                    $this.ShipDatabase(($mySourceDB.name),$myDestinationDB)
+                    $myDestinationDB=$mySourceDB.DbName+$DestinationSuffix
+                    $this.ShipDatabase(($mySourceDB.DbName),$myDestinationDB)
                 }
             }
         }Catch{
@@ -1177,10 +1219,12 @@ Class DatabaseShipping {
 
         $myOriginalLogFilePath=$this.LogWriter.LogFilePath
         if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
-        foreach ($mySourceDB in $SourceDB){
-            $this.LogWriter.LogFilePath=$myOriginalLogFilePath
-            $myDestinationDB=$mySourceDB+$DestinationSuffix
-            $this.ShipDatabase($mySourceDB,$myDestinationDB)
+        if ($null -ne $SourceDB){
+            foreach ($mySourceDB in $SourceDB){
+                $this.LogWriter.LogFilePath=$myOriginalLogFilePath
+                $myDestinationDB=$mySourceDB+$DestinationSuffix
+                $this.ShipDatabase($mySourceDB,$myDestinationDB)
+            }
         }
     }
     [void] ShipDatabase([string]$SourceDB,[string]$DestinationDB){  #Ship a databases from source to destination
