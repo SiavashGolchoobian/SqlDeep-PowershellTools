@@ -193,7 +193,7 @@ Class DatabaseShipping {
         }
         return $myAnswer
     }
-    hidden [string]Get_StrategiesToString([RestoreStrategy[]]$Strategies) {
+    hidden [string]Get_StrategiesToString([RestoreStrategy[]]$Strategies) { #Get restore strategies as a comma seperated string
         $this.LogWriter.Write("Processing Started.", [LogType]::INF)
         [string]$myAnswer=$null
         [string]$myAcceptedStrategies=""
