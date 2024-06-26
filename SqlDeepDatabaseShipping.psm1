@@ -193,6 +193,18 @@ Class DatabaseShipping {
         }
         return $myAnswer
     }
+    hidden [string]Get_StrategiesToString([RestoreStrategy[]]$Strategies) {
+        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        [string]$myAnswer=$null
+        [string]$myAcceptedStrategies=""
+
+        $Strategies | ForEach-Object{$myAcceptedStrategies+=($_.value__).ToString()+","}
+        if ($myAcceptedStrategies[-1] -eq ",") {$myAcceptedStrategies=$myAcceptedStrategies.Substring(0,$myAcceptedStrategies.Length-1)}
+        $myAnswer=$myAcceptedStrategies
+        $this.LogWriter.Write(("Strategies are: " + $myAnswer), [LogType]::INF)
+
+        return $myAnswer
+    }
     hidden [BackupFile[]]Database_GetBackupFileList([string]$ConnectionString,[string]$DatabaseName,[Decimal]$LatestLSN,[Decimal]$DiffBackupBaseLsn) {    #Get List of backup files combination neede to restore
         $this.LogWriter.Write("Processing Started.", [LogType]::INF)
         [BackupFile[]]$myAnswer=$null
@@ -205,11 +217,16 @@ Class DatabaseShipping {
         }
 
         [string]$myAcceptedStrategies=""
-        $this.PreferredStrategies | ForEach-Object{$myAcceptedStrategies+=($_.value__).ToString()+","}
-        if ($myAcceptedStrategies[-1] -eq ",") {$myAcceptedStrategies=$myAcceptedStrategies.Substring(0,$myAcceptedStrategies.Length-1)}
+        if ($LatestLSN -eq 0 -and $DiffBackupBaseLsn -eq 0){
+            [RestoreStrategy[]]$Strategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog
+            $myAcceptedStrategies=$this.Get_StrategiesToString($Strategies)
+        }else{
+            $myAcceptedStrategies=$this.Get_StrategiesToString($this.PreferredStrategies)
+        }
+
         if ($null -eq $myAcceptedStrategies -or $myAcceptedStrategies.Trim().Length -eq 0) {
-            $this.LogWriter.Write("PreferedStrategies is empty.",[LogType]::ERR)
-            throw "PreferedStrategies is empty."
+            $this.LogWriter.Write("PreferredStrategies is empty.",[LogType]::ERR)
+            throw "PreferredStrategies is empty."
         }
 
         [string]$myCommand = "
