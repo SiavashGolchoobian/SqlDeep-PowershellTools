@@ -14,3 +14,8 @@ $myShip.ShipDatabases($myDatabases,"_DR")
 #Sample3:   Restore all user database except someones to destination in norecovery mode
 [string[]]$myExcludedList="SqlDeep","Sampledb3"
 $myShip.ShipAllUserDatabases("_DR",$myExcludedList)
+
+#Sample4:   Restore all user database except "SqlDeep","Sampledb3" to destination in norecovery mode also it tryies to use only Log files restoration if possible
+[string[]]$myExcludedList="SqlDeep","Sampledb3"
+$myShip.PreferredStrategies=[RestoreStrategy]::Log
+$myShip.ShipAllUserDatabases("_DR",$myExcludedList)
