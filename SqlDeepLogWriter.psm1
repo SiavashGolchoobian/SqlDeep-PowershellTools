@@ -61,8 +61,8 @@ Class LogWriter {
     LogWriter([string]$EventSource,[string]$Module,[bool]$LogToConsole,[bool]$LogToFile,[string]$LogFilePath,[bool]$LogToTable,[string]$LogInstanceConnectionString,[string]$LogTableName){
         $this.Init($EventSource,$Module,$LogToConsole,$LogToFile,$LogFilePath,$LogToTable,$LogInstanceConnectionString,$LogTableName)
     }
-    Reinitialize(){
-        $this.Init($this.EventSource,$this.Module,$this.LogToConsole,$this.LogToFile,$this.LogToTable,$this.LogInstanceConnectionString,$this.LogTableName)
+    Reinitialize(){  #Reinitialize current instance with modified attributes
+        $this.Init($this.EventSource,$this.Module,$this.LogToConsole,$this.LogToFile,$this.LogFilePath,$this.LogToTable,$this.LogInstanceConnectionString,$this.LogTableName)
     }
     hidden Init([string]$EventSource,[string]$Module,[bool]$LogToConsole,[bool]$LogToFile,[string]$LogFilePath,[bool]$LogToTable,[string]$LogInstanceConnectionString,[string]$LogTableName){
         $mySysToday = (Get-Date -Format "yyyyMMdd").ToString()

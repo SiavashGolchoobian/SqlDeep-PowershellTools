@@ -1218,11 +1218,11 @@ Class DatabaseShipping {
     [void] ShipAllUserDatabases([string]$DestinationSuffix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
         Write-Verbose ("ShipAllUserDatabases with " + $DestinationSuffix + " suffix")
         $this.LogWriter.Write(("ShipAllUserDatabases with " + $DestinationSuffix + " suffix"),[LogType]::INF)
+        [string]$myOriginalLogFilePath=""
         [string]$myExludedDB=""
         [string]$myDestinationDB=$null
-        [string]$myOriginalLogFilePath=$null
 
-        $myOriginalLogFilePath=$this.LogWriter.LogFilePath
+        $myOriginalLogFilePath=$this.LogWriter.LogFilePathPattern
         if ($null -ne $ExcludedList){
             foreach ($myExceptedDB in $ExcludedList){
                 $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
@@ -1265,7 +1265,7 @@ Class DatabaseShipping {
             #--=======================Initial Log Modules
             Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " started. =====")
             $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace("{Database}",$DestinationDB)
-            $this.LogWriter.Reinitialize
+            $this.LogWriter.Reinitialize()
             $this.LogWriter.Write("===== Shipping process started... ===== ", [LogType]::INF) 
             $this.LogWriter.Write(("ShipDatabase " + $SourceDB + " as " + $DestinationDB), [LogType]::INF) 
             $this.LogWriter.Write("Initializing EventsTable.Create.", [LogType]::INF) 
