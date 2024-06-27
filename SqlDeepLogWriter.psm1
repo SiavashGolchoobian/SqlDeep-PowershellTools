@@ -246,7 +246,7 @@ Class LogWriter {
         [string]$myZipPathTemplate=$null
         [string]$myGroupByPattern=$null
         
-        if ($BatchCount -le 0){$BatchCount=5}
+        if ($BatchCount -lt 0){$BatchCount=5}
         if ($KeepLatestFilesCount -le 0){$KeepLatestFilesCount=2}
         $SourceFolderPath=$SourceFolderPath.Trim()
         $SourceFilePattern=$SourceFilePattern.Trim()
@@ -326,7 +326,7 @@ Class LogWriter {
         Write-Verbose "DeleteArchiveFiles started."
         [string]$myZipPathTemplate=$null
         
-        if ($KeepLatestFilesCount -le 0){$KeepLatestFilesCount=2}
+        if ($KeepLatestFilesCount -lt 0){$KeepLatestFilesCount=2}
         $ArchiveFolderPath=$ArchiveFolderPath.Trim()
         $ArchiveFilePattern=$ArchiveFilePattern.Trim()
         if ($ArchiveFolderPath[-1] -ne "\") {$ArchiveFolderPath+="\"}
