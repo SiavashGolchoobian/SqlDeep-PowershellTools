@@ -1218,9 +1218,9 @@ Class DatabaseShipping {
     [void] ShipAllUserDatabases([string]$DestinationSuffix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
         Write-Verbose ("ShipAllUserDatabases with " + $DestinationSuffix + " suffix")
         $this.LogWriter.Write(("ShipAllUserDatabases with " + $DestinationSuffix + " suffix"),[LogType]::INF)
-        [string]$myOriginalLogFilePath=""
         [string]$myExludedDB=""
         [string]$myDestinationDB=$null
+        [string]$myOriginalLogFilePath=$null
 
         $myOriginalLogFilePath=$this.LogWriter.LogFilePathPattern
         if ($null -ne $ExcludedList){
@@ -1250,7 +1250,7 @@ Class DatabaseShipping {
         [string]$myDestinationDB=$null
         [string]$myOriginalLogFilePath=$null
 
-        $myOriginalLogFilePath=$this.LogWriter.LogFilePath
+        $myOriginalLogFilePath=$this.LogWriter.LogFilePathPattern
         if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
         if ($null -ne $SourceDB){
             foreach ($mySourceDB in $SourceDB){
