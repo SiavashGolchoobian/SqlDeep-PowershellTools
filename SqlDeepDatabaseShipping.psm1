@@ -172,12 +172,13 @@ Class DatabaseShipping {
     }
     hidden [System.Object]Database_GetDatabaseLSN([string]$ConnectionString,[string]$DatabaseName) {  #Get database latest LSN
         $this.LogWriter.Write("Processing Started.", [LogType]::INF)
-        [System.Object]$myAnswer=New-Object PsObject -Property @{LastLsn = [decimal]0; DiffBackupBaseLsn = [decimal]0;}
+        [System.Object]$myAnswer=New-Object PsObject -Property @{LastLsn = [decimal]0; DiffBackupBaseLsn = [decimal]0; KnownRecoveryFork = [string]""}
         [string]$myCommand="
             USE [master];
             SELECT TOP 1
                 [myDatabaseLsn].[redo_start_lsn] AS LastLsn,
-                [myDatabaseLsn].[differential_base_lsn] AS DiffBackupBaseLsn
+                [myDatabaseLsn].[differential_base_lsn] AS DiffBackupBaseLsn,
+                CAST([myDatabaseLsn].[redo_start_fork_guid] AS NVARCHAR(50)) AS KnownRecoveryFork
             FROM 
                 [master].[sys].[databases] AS myDatabase
                 INNER JOIN [master].[sys].[master_files] AS myDatabaseLsn ON [myDatabase].[database_id]=[myDatabaseLsn].[database_id]
@@ -188,7 +189,11 @@ Class DatabaseShipping {
             "
         try{
             $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-            if ($null -ne $myRecord) {$myAnswer.LastLsn = [decimal]$myRecord.LastLsn; $myAnswer.DiffBackupBaseLsn = [decimal]$myRecord.DiffBackupBaseLsn}
+            if ($null -ne $myRecord) {
+                                        $myAnswer.LastLsn = [decimal]$myRecord.LastLsn; 
+                                        $myAnswer.DiffBackupBaseLsn = [decimal]$myRecord.DiffBackupBaseLsn
+                                        $myAnswer.KnownRecoveryFork = [string]$myRecord.KnownRecoveryFork
+                                    }
         }Catch{
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
         }
@@ -206,7 +211,7 @@ Class DatabaseShipping {
 
         return $myAnswer
     }
-    hidden [BackupFile[]]Database_GetBackupFileList([string]$ConnectionString,[string]$DatabaseName,[Decimal]$LatestLSN,[Decimal]$DiffBackupBaseLsn) {    #Get List of backup files combination neede to restore
+    hidden [BackupFile[]]Database_GetBackupFileList([string]$ConnectionString,[string]$DatabaseName,[Decimal]$LatestLSN,[Decimal]$DiffBackupBaseLsn,[string]$KnownRecoveryFork) {    #Get List of backup files combination neede to restore
         $this.LogWriter.Write("Processing Started.", [LogType]::INF)
         [BackupFile[]]$myAnswer=$null
 
@@ -253,12 +258,21 @@ Class DatabaseShipping {
         DECLARE @myRecoveryDate AS NVARCHAR(50);
         DECLARE @myLowerBoundOfFileScan DATETIME;
         DECLARE @myNumberOfHoursToScan INT;
+        DECLARE @myLatestRecoveryFork UNIQUEIDENTIFIER;
+        DECLARE @myLatestRecoveryForkString NVARCHAR(50);
+        DECLARE @myKnownRecoveryForkString NVARCHAR(50);
+        DECLARE @myIsFullBackupStrategyForced BIT;
         SET @myDBName=N'"+ $DatabaseName + "';
         SET @myLatestLsn="+ $LatestLSN.ToString() + ";
         SET @myDiffBackupBaseLsn="+ $DiffBackupBaseLsn.ToString() + ";
         SET @myNumberOfHoursToScan="+ $this.LimitMsdbScanToRecentHours.ToString() +";
+        SET @myKnownRecoveryForkString='"+ $KnownRecoveryFork.ToString() +"';
         SET @myRecoveryDate = getdate();
         SET @myLowerBoundOfFileScan= CASE WHEN @myNumberOfHoursToScan=0 THEN CAST('1753-01-01' AS DATETIME) ELSE CAST(DATEADD(HOUR,-1*ABS(@myNumberOfHoursToScan),GETDATE()) AS DATE) END
+        SET @myLatestRecoveryFork= (SELECT TOP 1 [last_recovery_fork_guid] FROM [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) WHERE [myBackupset].[is_copy_only] = 0 AND [myBackupset].[database_name] = @myDBName AND [myBackupset].[backup_finish_date] IS NOT NULL AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan ORDER BY [myBackupset].[backup_start_date] DESC)
+        SET @myIsFullBackupStrategyForced= 0
+        IF @myKnownRecoveryForkString != CAST(@myLatestRecoveryFork AS NVARCHAR(50))
+            SET @myIsFullBackupStrategyForced= 1
         -------------------------------------------Create required functions in tempdb
         IF NOT EXISTS (SELECT 1 FROM [tempdb].[sys].[all_objects] WHERE type='FN' AND name = 'fn_FileExists')
         BEGIN
@@ -367,13 +381,14 @@ Class DatabaseShipping {
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
             WHERE 
-                [myBackupset].[is_copy_only] = 0
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'D'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
-                AND 1 IN (" + $myAcceptedStrategies + ")
+                AND (@myIsFullBackupStrategyForced=1 OR 1 IN (" + $myAcceptedStrategies + "))
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
         ----------------------Step1.2:	Extract latest existed and related incremental backups
@@ -410,12 +425,13 @@ Class DatabaseShipping {
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
             WHERE 
-                [myBackupset].[is_copy_only] = 0
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'I'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
-                AND 1 IN (" + $myAcceptedStrategies + ")
+                AND (@myIsFullBackupStrategyForced=1 OR 1 IN (" + $myAcceptedStrategies + "))
 
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
             DELETE FROM #myResult WHERE StrategyNo=1 AND BackupType='D' AND CheckpointLsn NOT IN (SELECT DatabaseBackupLsn FROM #myResult WHERE StrategyNo=1 AND BackupType='I' GROUP BY DatabaseBackupLsn)	--Delete full backups without any available incremental backups
@@ -457,7 +473,8 @@ Class DatabaseShipping {
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
             WHERE 
-                [myBackupset].[is_copy_only] = 0
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
@@ -467,7 +484,7 @@ Class DatabaseShipping {
                     OR
                     (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     )
-                AND 1 IN (" + $myAcceptedStrategies + ")
+                AND (@myIsFullBackupStrategyForced=1 OR 1 IN (" + $myAcceptedStrategies + "))
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
             UPDATE #myResult SET IsContiguous=1 WHERE StrategyNo=1 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=1 AND BackupType='L')	    --First log file is not uncontiguous
@@ -581,13 +598,14 @@ Class DatabaseShipping {
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
             WHERE 
-                [myBackupset].[is_copy_only] = 0
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'D'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
-                AND 2 IN (" + $myAcceptedStrategies + ")
+                AND (@myIsFullBackupStrategyForced=1 OR 2 IN (" + $myAcceptedStrategies + "))
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
         ----------------------Step2.2:	Extract all log backups after that full backup
@@ -624,7 +642,8 @@ Class DatabaseShipping {
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
             WHERE 
-                [myBackupset].[is_copy_only] = 0
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
@@ -634,7 +653,7 @@ Class DatabaseShipping {
                     OR
                     (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     )
-                AND 2 IN (" + $myAcceptedStrategies + ")
+                AND (@myIsFullBackupStrategyForced=1 OR 2 IN (" + $myAcceptedStrategies + "))
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
             UPDATE #myResult SET IsContiguous=1 WHERE StrategyNo=2 AND BackupType='L' AND ID = (SELECT MIN(ID) FROM #myResult WHERE StrategyNo=2 AND BackupType='L')	    --First log file is not uncontiguous
@@ -734,7 +753,8 @@ Class DatabaseShipping {
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
             WHERE 
-                [myBackupset].[is_copy_only] = 0
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'I'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
@@ -778,7 +798,8 @@ Class DatabaseShipping {
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
             WHERE 
-                [myBackupset].[is_copy_only] = 0
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
@@ -889,7 +910,8 @@ Class DatabaseShipping {
                         [myBackupFamily].[media_set_id]
                     ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
             WHERE 
-                [myBackupset].[is_copy_only] = 0
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
@@ -1274,6 +1296,7 @@ Class DatabaseShipping {
             [string]$myDelimiter=","
             [decimal]$myLatestLSN=0
             [decimal]$myDiffBackupBaseLsn=0
+            [string]$myKnownRecoveryFork=""
 
             #--=======================Validate input parameters
             if ($SourceDB.Trim().Length -eq 0) {
@@ -1316,17 +1339,20 @@ Class DatabaseShipping {
                 $this.LogWriter.Write(("Get DB Backup file combinations, for: " + $DestinationDB),[LogType]::INF)
                 $myLatestLSN=[decimal]0
                 $myDiffBackupBaseLsn=[decimal]0
+                $myKnownRecoveryFork=[string]""
             }elseif ($myDestinationDbStatus -eq [DestinationDbStatus]::Restoring) {
                 $this.LogWriter.Write(("Get DB Backup file combinations, for: " + $DestinationDB),[LogType]::INF)
                 $myLsnAnswers=$this.Database_GetDatabaseLSN($this.DestinationInstanceConnectionString,$DestinationDB)
                 $myLatestLSN=$myLsnAnswers.LastLsn
                 $myDiffBackupBaseLsn=$myLsnAnswers.DiffBackupBaseLsn
+                $myKnownRecoveryFork=$myLsnAnswers.KnownRecoveryFork
             }
             $this.LogWriter.Write(("Latest LSN is: " + $myLatestLSN.ToString()),[LogType]::INF)
             $this.LogWriter.Write(("DiffBackupBaseLsn is: " + $myDiffBackupBaseLsn.ToString()),[LogType]::INF)
+            $this.LogWriter.Write(("KnownRecoveryFork is: " + $myKnownRecoveryFork.ToString()),[LogType]::INF)
 
             [BackupFile[]]$myBackupFileList=$null
-            $myBackupFileList=$this.Database_GetBackupFileList($this.SourceInstanceConnectionString,$SourceDB,$myLatestLSN,$myDiffBackupBaseLsn)
+            $myBackupFileList=$this.Database_GetBackupFileList($this.SourceInstanceConnectionString,$SourceDB,$myLatestLSN,$myDiffBackupBaseLsn,$myKnownRecoveryFork)
             if ($null -eq $myBackupFileList -or $myBackupFileList.Count -eq 0) {
                 $myRestoreStrategy = [RestoreStrategy]::NotExist
                 $this.LogWriter.Write("There is nothing(no files) to restore.",[LogType]::WRN)
