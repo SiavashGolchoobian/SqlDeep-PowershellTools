@@ -178,7 +178,7 @@ Class DatabaseShipping {
             SELECT TOP 1
                 [myDatabaseLsn].[redo_start_lsn] AS LastLsn,
                 [myDatabaseLsn].[differential_base_lsn] AS DiffBackupBaseLsn,
-                CAST([myDatabaseLsn].[redo_start_fork_guid] AS NVARCHAR(50)) AS KnownRecoveryFork
+                ISNULL( CAST([myDatabaseLsn].[redo_start_fork_guid] AS NVARCHAR(50)) , CAST(N'' AS NVARCHAR(50)) ) AS KnownRecoveryFork
             FROM 
                 [master].[sys].[databases] AS myDatabase
                 INNER JOIN [master].[sys].[master_files] AS myDatabaseLsn ON [myDatabase].[database_id]=[myDatabaseLsn].[database_id]
