@@ -162,7 +162,7 @@ Class LogWriter {
         
 
         $myContent = $myEventTimeStamp + "`t" + $Type + "`t(" + ($this.GetFunctionName(3)) +")`t"+ $Content
-        if ($Terminate) { $myContent+=$myContent + "`t" + ". Prcess terminated with " + $this.ErrCount.ToString() + " Error count and " + $this.WrnCount.ToString() + " Warning count."}
+        if ($Terminate) { $myContent+=$myContent + "`t" + ". Process terminated with " + $this.ErrCount.ToString() + " Error count and " + $this.WrnCount.ToString() + " Warning count."}
 
         #-----Write to stdout
         Write-Output $myContent
