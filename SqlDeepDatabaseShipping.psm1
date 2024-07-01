@@ -294,9 +294,9 @@ Class DatabaseShipping {
         CREATE TABLE #myFileExistCache 
         (
             MediaSetId INT,
-            IsFilesExists BIT DEFAULT(1),
-            INDEX myFileExistCacheUNQ UNIQUE CLUSTERED (MediaSetId) WITH (IGNORE_DUP_KEY=ON)
+            IsFilesExists BIT DEFAULT(1)
         );
+        CREATE UNIQUE CLUSTERED INDEX myFileExistCacheUNQ ON #myFileExistCache (MediaSetId) WITH (IGNORE_DUP_KEY=ON);
         CREATE TABLE #myResult
         (
             ID INT IDENTITY,
@@ -1238,9 +1238,9 @@ Class DatabaseShipping {
         $myAnswer = $myRestoreType + " [" + $DatabaseName + "] FROM " + $myBakupFilePaths + " WITH File = " + $Position.ToString() + $myRestoreLocation + ", NORECOVERY, STATS=5;"
         return $myAnswer
     }
-    [void] ShipAllUserDatabases([string]$DestinationSuffix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
-        Write-Verbose ("ShipAllUserDatabases with " + $DestinationSuffix + " suffix")
-        $this.LogWriter.Write($this.LogStaticMessage+("ShipAllUserDatabases with " + $DestinationSuffix + " suffix"),[LogType]::INF)
+    [void] ShipAllUserDatabases([string]$DestinationPrefix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
+        Write-Verbose ("ShipAllUserDatabases with " + $DestinationPrefix + " Prefix")
+        $this.LogWriter.Write($this.LogStaticMessage+("ShipAllUserDatabases with " + $DestinationPrefix + " Prefix"),[LogType]::INF)
         [string]$myExludedDB=""
         [string]$myDestinationDB=$null
         [string]$myOriginalLogFilePath=$null
@@ -1251,7 +1251,7 @@ Class DatabaseShipping {
                 $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
             }
         }
-        if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
+        if ($null -eq $DestinationPrefix){$DestinationPrefix=""}
         [string]$myCommand="
             SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+")
             "
@@ -1260,7 +1260,7 @@ Class DatabaseShipping {
             if ($null -ne $myRecord) {
                 foreach ($mySourceDB in $myRecord){
                     $this.LogWriter.LogFilePath=$myOriginalLogFilePath
-                    $myDestinationDB=$mySourceDB.DbName+$DestinationSuffix
+                    $myDestinationDB=$DestinationPrefix+$mySourceDB.DbName
                     $this.ShipDatabase(($mySourceDB.DbName),$myDestinationDB)
                 }
             }
@@ -1268,17 +1268,17 @@ Class DatabaseShipping {
             Write-Verbose(($_.ToString()).ToString())
         }
     }
-    [void] ShipDatabases([string[]]$SourceDB,[string]$DestinationSuffix){   #Ship list of databases from source to destination
-        Write-Verbose ("ShipDatabases("+ $SourceDB.Count.ToString() +") with " + $DestinationSuffix + " suffix")
+    [void] ShipDatabases([string[]]$SourceDB,[string]$DestinationPrefix){   #Ship list of databases from source to destination
+        Write-Verbose ("ShipDatabases("+ $SourceDB.Count.ToString() +") with " + $DestinationPrefix + " Prefix")
         [string]$myDestinationDB=$null
         [string]$myOriginalLogFilePath=$null
 
         $myOriginalLogFilePath=$this.LogWriter.LogFilePathPattern
-        if ($null -eq $DestinationSuffix){$DestinationSuffix=""}
+        if ($null -eq $DestinationPrefix){$DestinationPrefix=""}
         if ($null -ne $SourceDB){
             foreach ($mySourceDB in $SourceDB){
                 $this.LogWriter.LogFilePath=$myOriginalLogFilePath
-                $myDestinationDB=$mySourceDB+$DestinationSuffix
+                $myDestinationDB=$DestinationPrefix+$mySourceDB
                 $this.ShipDatabase($mySourceDB,$myDestinationDB)
             }
         }
