@@ -86,6 +86,7 @@ Class DatabaseShipping {
     [DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY
     [RestoreStrategy[]]$PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
     [bool]$SkipBackupFilesExistenceCheck=$false
+    [nullable[datetime]]$RestoreTo=$null
     hidden [LogWriter]$LogWriter
     hidden [string]$LogStaticMessage=""
 
@@ -251,12 +252,16 @@ Class DatabaseShipping {
             $myBackupFileExistenceCheckCommand="CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists"
         }
 
+        # Generate RecoveryTime
+        [string]$myRestoreTo=(Get-Date).ToString()
+        if ($this.RestoreTo) {$myRestoreTo=($this.RestoreTo).ToString()}
+
         [string]$myCommand = "
         USE [tempdb];
         DECLARE @myDBName AS NVARCHAR(255);
         DECLARE @myLatestLsn NUMERIC(25,0);
         DECLARE @myDiffBackupBaseLsn NUMERIC(25,0);
-        DECLARE @myRecoveryDate AS NVARCHAR(50);
+        DECLARE @myRestoreTo AS DATETIME;
         DECLARE @myLowerBoundOfFileScan DATETIME;
         DECLARE @myNumberOfHoursToScan INT;
         DECLARE @myLatestRecoveryFork UNIQUEIDENTIFIER;
@@ -268,7 +273,7 @@ Class DatabaseShipping {
         SET @myDiffBackupBaseLsn="+ $DiffBackupBaseLsn.ToString() + ";
         SET @myNumberOfHoursToScan="+ $this.LimitMsdbScanToRecentHours.ToString() +";
         SET @myKnownRecoveryForkString='"+ $KnownRecoveryFork.ToString() +"';
-        SET @myRecoveryDate = getdate();
+        SET @myRestoreTo = CAST('"+ $myRestoreTo +"' AS DATETIME);
         SET @myLowerBoundOfFileScan= CASE WHEN @myNumberOfHoursToScan=0 THEN CAST('1753-01-01' AS DATETIME) ELSE CAST(DATEADD(HOUR,-1*ABS(@myNumberOfHoursToScan),GETDATE()) AS DATE) END
         SET @myLatestRecoveryFork= (SELECT TOP 1 [last_recovery_fork_guid] FROM [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) WHERE [myBackupset].[is_copy_only] = 0 AND [myBackupset].[database_name] = @myDBName AND [myBackupset].[backup_finish_date] IS NOT NULL AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan ORDER BY [myBackupset].[backup_start_date] DESC)
         SET @myIsFullBackupStrategyForced= 0
@@ -387,6 +392,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'D'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
                 AND (@myIsFullBackupStrategyForced=1 OR 1 IN (" + $myAcceptedStrategies + "))
@@ -431,6 +437,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'I'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND (@myIsFullBackupStrategyForced=1 OR 1 IN (" + $myAcceptedStrategies + "))
 
@@ -479,6 +486,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND	(
                     [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1)
@@ -604,6 +612,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'D'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
                 AND (@myIsFullBackupStrategyForced=1 OR 2 IN (" + $myAcceptedStrategies + "))
@@ -648,6 +657,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND	(
                     [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2)
@@ -759,6 +769,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'I'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[database_backup_lsn]=@myDiffBackupBaseLsn
                 AND CASE WHEN @myDiffBackupBaseLsn = 0 THEN @myLowerBoundOfFileScan ELSE [myBackupset].[backup_start_date] END >= @myLowerBoundOfFileScan
@@ -804,6 +815,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND	(
                     [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=3)
@@ -916,6 +928,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND CASE WHEN @myLatestLsn = 0 THEN @myLowerBoundOfFileScan ELSE [myBackupset].[backup_start_date] END >= @myLowerBoundOfFileScan
                 AND	(
@@ -1227,15 +1240,18 @@ Class DatabaseShipping {
         $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [string]$myAnswer=""
         [string]$myRestoreLocation=""
+        [string]$myBakupFilePaths=""
+        [string]$myStopAt=""
         [string]$myRestoreType=switch ($BackupType) {
             "D"{"RESTORE DATABASE"}
             "I"{"RESTORE DATABASE"}
             "L"{"RESTORE LOG"}
             Default {"RESTORE DATABASE"}
         }
+        if (($this.RestoreTo) -and ($BackupType -eq "L") -and ($this.DestinationRestoreMode -eq [DatabaseRecoveryMode]::RECOVERY)) {$myStopAt=", STOPAT = '" + ($this.RestoreTo).ToString() + "' "}
         if ($BackupType -eq "D") {$myRestoreLocation = ", " + $RestoreLocation} else {$myRestoreLocation=""}
-        [string]$myBakupFilePaths="DISK = '" + $MergedPaths.Replace($PathDelimiter,"', DISK ='") + "'"
-        $myAnswer = $myRestoreType + " [" + $DatabaseName + "] FROM " + $myBakupFilePaths + " WITH File = " + $Position.ToString() + $myRestoreLocation + ", NORECOVERY, STATS=5;"
+        $myBakupFilePaths="DISK = '" + $MergedPaths.Replace($PathDelimiter,"', DISK ='") + "'"
+        $myAnswer = $myRestoreType + " [" + $DatabaseName + "] FROM " + $myBakupFilePaths + " WITH File = " + $Position.ToString() + $myRestoreLocation + $myStopAt + ", NORECOVERY, STATS=5;"
         return $myAnswer
     }
     [void] ShipAllUserDatabases([string]$DestinationPrefix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
