@@ -7,20 +7,25 @@ $myShip=New-DatabaseShipping -SourceInstanceConnectionString "Data Source=LSNR.S
 #Sample1:   Restore signle database [Sampledb1] as [DR_Sampledb] to destination in norecovery mode
 $myShip.ShipDatabase("Sampledb1","Sampledb1_DR")
 
-#Sample2:   Restore multiple database ([Sampledb1],[Sampledb2],[Sampledb3]) as [DR_Sampledb1],[DR_Sampledb2],[DR_Sampledb3] to destination in norecovery mode
+#Sample2:   Restore and recover signle database [Sampledb1] as [DR_Sampledb] to 6/31/2024 20:05:00 on destination server (PTR only supports in [DatabaseRecoveryMode]::RECOVERY mode)
+$myShip.RestoreTo=[datetime]"6/31/2024 20:05:00"
+$myShip.DatabaseRecoveryMode=[DatabaseRecoveryMode]::RECOVERY
+$myShip.ShipDatabase("Sampledb1","Sampledb1_DR")
+
+#Sample3:   Restore multiple database ([Sampledb1],[Sampledb2],[Sampledb3]) as [DR_Sampledb1],[DR_Sampledb2],[DR_Sampledb3] to destination in norecovery mode
 [string[]]$myDatabases="Sampledb1","Sampledb2","Sampledb3"
 $myShip.ShipDatabases($myDatabases,"DR_")
 
-#Sample3:   Restore all user database except someones to destination in norecovery mode
+#Sample4:   Restore all user database except someones to destination in norecovery mode
 [string[]]$myExcludedList="SqlDeep","Sampledb3"
 $myShip.ShipAllUserDatabases("DR_",$myExcludedList)
 
-#Sample4:   Restore all user database except "SqlDeep","Sampledb3" to destination in norecovery mode also it tryies to use only Log files restoration if possible
+#Sample5:   Restore all user database except "SqlDeep","Sampledb3" to destination in norecovery mode also it tryies to use only Log files restoration if possible
 [string[]]$myExcludedList="SqlDeep","Sampledb3"
 $myShip.PreferredStrategies=[RestoreStrategy]::Log
 $myShip.ShipAllUserDatabases("DR_",$myExcludedList)
 
-#Sample5:   Restore all user database except "SqlDeep","Sampledb3" to destination in norecovery mode also it tryies to use only Log files restoration if possible
+#Sample6:   Restore all user database except "SqlDeep","Sampledb3" to destination in norecovery mode also it tryies to use only Log files restoration if possible
 [string]$ExcludedList="SqlDeep,Sampledb3"
 [string]$Prefix=""
 [string[]]$myExcludedList=$null

@@ -2,8 +2,8 @@ Using module .\SqlDeepLogWriter.psm1
 
 enum DatabaseGroup {
     ALL_DATABASES
-    USER_DATABASES
     SYSTEM_DATABASES
+    USER_DATABASES
 }
 enum BackupType {
     ALL
@@ -17,12 +17,6 @@ enum DestinationType {
     SFTP
     SCP
     LOCAL
-}
-enum CredentialType {
-    BySystemNetworkCredentialObject
-    ByStoredCredentialName
-    ByCiphertextFile
-    ByCiphertext
 }
 enum ActionType {
     Copy
@@ -38,27 +32,23 @@ enum HostOperation {
 }
 Class BackupShipping {
     [string]$SourceInstanceConnectionString
-    [DatabaseGroup]$DatabaseGroupsToTransfer
-    [string]$ExceptedDatabasesForTransfer
-    [BackupType]$BackupTypeToTransfer
+    [string]$DatabaseName
+    [BackupType]$BackupType
     [int]$HoursToScanForUntransferredBackups
     [DestinationType]$DestinationType
     [string]$Destination
     [string]$DestinationFolderStructure
     [string]$SshHostKeyFingerprint
-    [CredentialType]$CredentialType
-    [System.Net.NetworkCredential]$DestinationCredentialObject
     [string]$DestinationCredentialName
-    $DestinationCredentialCiphertextEncryptionByteKey
-    [string]$DestinationCredentialCiphertextUser
-    [string]$DestinationCredentialCiphertextPassword
-    [string]$DestinationCredentialCiphertextFile
     [ActionType]$ActionType
     [string]$RetainDaysOnDestination
     [string]$TransferedSuffix
     [string]$ShippedBackupsLogTableName
+    [string]$WinScpPath="C:\Program Files (x86)\WinSCP\WinSCPnet.dll"
+    hidden [System.Net.NetworkCredential]$DestinationCredential
     hidden [LogWriter]$LogWriter
     hidden [string]$BatchUid
+    hidden [string]$LogStaticMessage=""
 
     Init(){
         [string]$WinscpPath="C:\Program Files (x86)\WinSCP\WinSCPnet.dll"
@@ -70,7 +60,8 @@ Class BackupShipping {
         }
     }
 #region Functions
-hidden [bool]Create_TransferLogTable() {   #Create Log Table to Write Logs of transfered files in a table, if not exists
+hidden [bool]Create_ShippedBackupsLogTable() {   #Create Log Table to Write Logs of transfered files in a table, if not exists
+    $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
     [bool]$myAnswer=[bool]$true
     [string]$myCommand="
     DECLARE @myTableName nvarchar(255)
@@ -80,12 +71,12 @@ hidden [bool]Create_TransferLogTable() {   #Create Log Table to Write Logs of tr
         SELECT 
             1
         FROM 
-            sys.all_objects AS myTable
-            INNER JOIN sys.schemas AS mySchema ON myTable.schema_id=mySchema.schema_id
+            [sys].[all_objects] AS myTable
+            INNER JOIN [sys].[schemas] AS mySchema ON [myTable].[schema_id]=[mySchema].[schema_id]
         WHERE 
-            mySchema.name + '.' + myTable.name = REPLACE(REPLACE(@myTableName,'[',''),']','')
+            [mySchema].[name] + '.' + [myTable].[name] = REPLACE(REPLACE(@myTableName,'[',''),']','')
     ) BEGIN
-        CREATE TABLE" + $this.ShippedBackupsLogTableName + "(
+        CREATE TABLE " + $this.ShippedBackupsLogTableName + "(
             [Id] [bigint] IDENTITY(1,1) NOT NULL,
             [BatchId] [uniqueidentifier] NOT NULL,
             [EventTimeStamp] [datetime] NOT NULL DEFAULT (getdate()),
@@ -116,15 +107,15 @@ hidden [bool]Create_TransferLogTable() {   #Create Log Table to Write Logs of tr
     END
     "
     try{
-        Invoke-Sqlcmd -ConnectionString ($this.LogInstanceConnectionString) -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
+        Invoke-Sqlcmd -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
     }Catch{
-        Write-Error ($_.ToString()).ToString()
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         $myAnswer=[bool]$false
     }
     return $myAnswer
 }
 hidden [bool]Test_InstanceConnectivity([string]$ConnectionString,[string]$DatabaseName) {  #Test Instance connectivity
-    $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+    $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
     [bool]$myAnswer=$false
     [string]$myCommand="
         USE [master];
@@ -134,49 +125,66 @@ hidden [bool]Test_InstanceConnectivity([string]$ConnectionString,[string]$Databa
         $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
         if ($null -ne $myRecord) {$myAnswer=$true} else {$myAnswer=$false}
     }Catch{
-        $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
     }
     return $myAnswer
 }
-hidden [string]Get_InstanceName([string]$ConnectionString) {  #Get Source Instance Name
-    $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+hidden [string]Get_DatabaseServerName([string]$ConnectionString) {  #Get database server netbios name
+    $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
     [string]$myAnswer=$null
-    [string]$myCommand=" SELECT @@ServerName AS InstanceName;"
+    [string]$myCommand="
+        SELECT @@SERVERNAME, CASE CHARINDEX('\',@@SERVERNAME) WHEN 0 THEN @@SERVERNAME ELSE SUBSTRING(@@SERVERNAME,0,CHARINDEX('\',@@SERVERNAME)) END AS ServerName
+        "
     try{
-        [System.Data.DataRow]$myRecord=$null
         $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-        if ($null -ne $myRecord) {$myAnswer=$myRecord.InstanceName}
+        if ($null -ne $myRecord) {$myAnswer=$myRecord.ServerName} else {$myAnswer=$null}
     }Catch{
-        $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
     }
     return $myAnswer
 }
-hidden [bool]Send_OverFtp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath) {  #Upload file to FTP path by winscp
+hidden [string]Get_DatabaseInstanceName([string]$ConnectionString) {  #Get database server instance name
+    $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+    [string]$myAnswer=$null
+    [string]$myCommand="
+        SELECT @@SERVERNAME AS InstanceName
+        "
+    try{
+        $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+        if ($null -ne $myRecord) {$myAnswer=$myRecord.ServerName} else {$myAnswer=$null}
+    }Catch{
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+    }
+    return $myAnswer
+}
+hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[nullable[string]]$SourceFilePath=$null) {  #Upload file to FTP path by winscp
     [bool]$myAnswer=$false
     [string]$mySshKeyFingerprint=$null
-    $myAnswer=$this.Send_OverWinScp([DestinationType]::FTP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$mySshKeyFingerprint)
+    $myAnswer=$this.Operate_OverWinScp([DestinationType]::FTP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$null)
     return $myAnswer
 }
-hidden [bool]Send_OverSftp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
+hidden [bool]Operate_OverSftp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SshKeyFingerprint,[nullable[string]]$SourceFilePath=$null) {  #Upload file to SFTP path by winscp
     [bool]$myAnswer=$false
-    $myAnswer=$this.Send_OverWinScp([DestinationType]::SFTP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$SshKeyFingerprint)
+    $myAnswer=$this.Operate_OverWinScp([DestinationType]::SFTP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$SshKeyFingerprint)
     return $myAnswer
 }
-hidden [bool]Send_OverScp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
+hidden [bool]Operate_OverScp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SshKeyFingerprint,[nullable[string]]$SourceFilePath=$null) {  #Upload file to SFTP path by winscp
     [bool]$myAnswer=$false
-    $myAnswer=$this.Send_OverWinScp([DestinationType]::SCP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$SshKeyFingerprint)
+    $myAnswer=$this.Operate_OverWinScp([DestinationType]::SCP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$SshKeyFingerprint)
     return $myAnswer
 }
-hidden [bool]Send_OverWinScp([DestinationType]$DestinationType,[HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath,[string]$SshKeyFingerprint) {  #Do file operation to via winscp
+hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[nullable[string]]$SourceFilePath=$null,[nullable[string]]$SshKeyFingerprint=$null) {  #Do file operation to via winscp
+    $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
     [bool]$myAnswer=$false
-    Write-Log -Type INF -Content "Processing Started."
-    $myArguments=$null
-    [string]$myServerUser=$null
+    [string]$myDestinationPath=$null
+    [string]$myDestinationUser=$null
+    [string]$myDestinationPassword=$null
+    [hashtable]$myArguments=$null
     [WinSCP.SessionOptions]$mySessionOptions=$null
     [WinSCP.Session]$mySession=$null
     [WinSCP.TransferOptions]$myTransferOptions=$null
 
-    $DestinationPath = $DestinationPath.Replace("//","/")
+    $myDestinationPath = $DestinationPath.Replace("//","/")
     # Setup session options
     if ($Credential.Domain.Trim().Length -eq 0){
         $myServerUser=$Credential.UserName.Trim()
@@ -351,6 +359,96 @@ hidden [bool]Send_OverWinScp([DestinationType]$DestinationType,[HostOperation]$O
     }
  
     return $myAnswer
+}
+[void] Save_CredentialToStore([string]$StoreCredentialName,[System.Net.NetworkCredential]$Credential){  #Save credential to Windows Credential Manager
+    if(-not(Get-Module -ListAvailable -Name CredentialManager)) {
+        Install-Module CredentialManager -force -Scope CurrentUser
+    }
+    if(-not(Get-Module CredentialManager)){
+        Import-Module CredentialManager
+    }
+    $this.DestinationCredential=(Get-StoredCredential -Target $StoreCredentialName).GetNetworkCredential()
+    New-StoredCredential -Target StoredCredentialName -Type Generic -UserName $Credential.UserName -Password $Credential.Password -Persist LocalMachine
+}
+[void] Set_DestinationCredential([System.Net.NetworkCredential]$Credential){    #Retrive destination credential from input
+    $this.DestinationCredential=$Credential
+}
+[void] Set_DestinationCredential([string]$StoredCredentialName){    #Retrive destination credential from Windows Credential Manager
+    if(-not(Get-Module -ListAvailable -Name CredentialManager)) {
+        Install-Module CredentialManager -force -Scope CurrentUser
+    }
+    if(-not(Get-Module CredentialManager)){
+        Import-Module CredentialManager
+    }
+    $this.DestinationCredential=(Get-StoredCredential -Target $StoredCredentialName).GetNetworkCredential()
+}
+[void] Set_DestinationCredential([string]$UserName,[string]$CipheredPassword, [byte[]]$Key){    #Generate destination credential from plaintext username and cipheredtext password
+    [SecureString]$myPassword = $null
+    $myPassword = ConvertTo-SecureString -String $CipheredPassword -Key $Key 
+    $this.Set_DestinationCredential($UserName, $myPassword)
+}
+[void] Set_DestinationCredential([string]$UserName,[SecureString]$Password){    #Generate destination credential from plain text username and securestring password
+    $this.DestinationCredential=(New-Object System.Management.Automation.PsCredential -ArgumentList $UserName,$Password).GetNetworkCredential()
+}
+[void] Set_DestinationCredential([string]$UserName,[string]$Password){  #Generate destination credential from plain text username and password
+    $this.DestinationCredential=New-Object System.Net.NetworkCredential($UserName, $Password)
+}
+[void] Transfer_Backup(){  #Transfer Backup from source to destination
+    try {
+        #--=======================Initial ShipBackup Modules
+        Write-Verbose ("===== ShipBackup started. =====")
+        $this.BatchUid=(New-Guid).ToString()
+        $this.LogStaticMessage= ""
+        $this.LogWriter.Write($this.LogStaticMessage+"ShipBackup", [LogType]::INF) 
+
+        #--=======================Set constants
+        [string]$mySourceInstanceName=$null
+        [bool]$myDestinationIsAlive=$false
+
+        #--=======================Check source instance connectivity
+        $this.LogWriter.Write($this.LogStaticMessage+"Source Instance Connectivity control on " + $this.SourceInstanceConnectionString, [LogType]::INF) 
+        if ($this.Test_InstanceCsonnectivity($this.SourceInstanceConnectionString,"msdb") -eq $false) {
+            $this.LogWriter.Write($this.LogStaticMessage+"Source Instance Connection failure.", [LogType]::ERR) 
+            throw ($this.LogStaticMessage+"Source Instance Connection failure.")
+        } 
+        #--=======================Check shipped logs sql instance connectivity
+        $this.LogWriter.Write($this.LogStaticMessage+"Test shipped logs sql instance connectivity.", [LogType]::INF) 
+        if ($this.Instance_ConnectivityTest($this.LogWriter.LogInstanceConnectionString,"master") -eq $false) {
+            $this.LogWriter.Write($this.LogStaticMessage+"Can not connect to shipped logs sql instance on " + $this.LogWriter.LogInstanceConnectionString, [LogType]::ERR) 
+            throw ($this.LogStaticMessage+"Can not connect to shipped logs sql instance.")            
+        }
+        $this.LogWriter.Write($this.LogStaticMessage+"Initializing Shipped files log table.", [LogType]::INF) 
+        if ($this.Create_ShippedBackupsLogTable() -eq $false)  {
+            $this.LogWriter.Write($this.LogStaticMessage+"Can not initialize table to save shipped files log on " + $this.LogWriter.LogInstanceConnectionString + " to " + $this.ShippedBackupsLogTableName + " table.", [LogType]::ERR) 
+            throw ($this.LogStaticMessage+"Shipped files log table initialization failed.")
+        }
+        #--=======================Check destination credential existence
+        $this.LogWriter.Write($this.LogStaticMessage+"Check destination credential existence.", [LogType]::INF) 
+        if (!($this.DestinationCredential)) {
+            $this.LogWriter.Write($this.LogStaticMessage+"Destination Credential is not exists.", [LogType]::ERR) 
+            throw ($this.LogStaticMessage+"Destination Credential is not exists.")
+        }
+        #--=======================Check destination connectivity
+        $this.LogWriter.Write("Check Destination Connectivity with DestinationType of " + $this.DestinationType + ", Destionation location of " + $this.Destination + " and DestinationCredential Username of " + $this.DestinationCredential.UserName, [LogType]::INF) 
+        $myDestinationIsAlive = switch ($this.DestinationType) 
+        {
+            [DestinationType]::[FTP]    {This.Operate_OverFtp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential)}
+            [DestinationType]::[SFTP]   {This.Operate_OverSftp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential);SftpByWinscp -Operation ISALIVE -SftpServer $Destination -SftpCredential $DestinationCredential -WinscpPath $WinscpPath -SftpSshKeyFingerprint $SshHostKeyFingerprint}
+            [DestinationType]::[SCP]    {ScpByWinscp -Operation ISALIVE -ScpServer $Destination -ScpCredential $DestinationCredential -WinscpPath $WinscpPath -ScpSshKeyFingerprint $SshHostKeyFingerprint}
+            [DestinationType]::[UNC]    {UNC.IsAlive -UncSharedFolderPath $Destination -UncCredential $DestinationCredential -TemporalDriveLetter "A"}
+        }
+        if ($myDestinationIsAlive -eq $false){
+        Write-Log -Type ERR -Content "Destination is not avilable." -Terminate
+        }
+
+
+        Write-Log -Type INF -Content ("Get Source Instance Name of " + $this.SourceInstanceConnectionString)
+        $mySourceInstanceName=$this.Get_DatabaseInstanceName($this.SourceInstanceConnectionString)
+
+    }
+    catch {
+        <#Do this if a terminating exception happens#>
+    }
 }
 #endregion
 }
@@ -1776,10 +1874,10 @@ Function SourceInstance.SetBackupsToTransferred {  #Set backup file(s) to transf
 }
 
 #---------------------------------------------------------MAIN BODY
-#--=======================Load Required Modules
-if(-not(Get-Module -ListAvailable -Name CredentialManager)) {Install-Module CredentialManager -force -Scope CurrentUser}
-if(-not(Get-Module CredentialManager)){Import-Module CredentialManager}
-if(-not(Get-Module SqlServer)){Import-Module -Name SqlServer}
+# #--=======================Load Required Modules
+# if(-not(Get-Module -ListAvailable -Name CredentialManager)) {Install-Module CredentialManager -force -Scope CurrentUser}
+# if(-not(Get-Module CredentialManager)){Import-Module CredentialManager}
+# if(-not(Get-Module SqlServer)){Import-Module -Name SqlServer}
 
 #--=======================Initial Log Modules
 $mySysToday = (Get-Date -Format "yyyyMMdd").ToString()
