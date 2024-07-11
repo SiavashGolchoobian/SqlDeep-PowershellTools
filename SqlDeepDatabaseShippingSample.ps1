@@ -30,6 +30,6 @@ $myShip.ShipAllUserDatabases("DR_",$myExcludedList)
 [string]$Prefix=""
 [string[]]$myExcludedList=$null
 if ($null -ne $ExcludedList -and $ExcludedList.Trim().Length -gt 0){$myExcludedList=$ExcludedList.Split(",")}else{$myExcludedList=$null}
-$myShip.SkipBackupFilesExistenceCheck=$false                #Don't check backu file existence on source (because of performance penalty)
+$myShip.SkipBackupFilesExistenceCheck=$true                #Don't check backup file existence on source (because of performance penalty)
 $myShip.PreferredStrategies=[RestoreStrategy]::Log
 $myShip.ShipAllUserDatabases($Prefix,$myExcludedList)
