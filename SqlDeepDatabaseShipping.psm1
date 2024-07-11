@@ -262,6 +262,9 @@ Class DatabaseShipping {
         DECLARE @myLatestLsn NUMERIC(25,0);
         DECLARE @myDiffBackupBaseLsn NUMERIC(25,0);
         DECLARE @myRestoreTo AS DATETIME;
+		DECLARE @myRestoreToLatestFullBackupsetId AS INT;
+		DECLARE @myRestoreToLatestDiffBackupsetId AS INT;
+		DECLARE @myRestoreToLatestLogBackupsetId AS INT;
         DECLARE @myLowerBoundOfFileScan DATETIME;
         DECLARE @myNumberOfHoursToScan INT;
         DECLARE @myLatestRecoveryFork UNIQUEIDENTIFIER;
@@ -279,6 +282,33 @@ Class DatabaseShipping {
         SET @myIsFullBackupStrategyForced= 0
         IF @myKnownRecoveryForkString != CAST(@myLatestRecoveryFork AS NVARCHAR(50))
             SET @myIsFullBackupStrategyForced= 1
+
+        SELECT  --Detect Latest usefull backupset according to @myRestoreTo time
+			@myRestoreToLatestFullBackupsetId=myPivot.D,
+			@myRestoreToLatestDiffBackupsetId=myPivot.I,
+			@myRestoreToLatestLogBackupsetId=myPivot.L
+		FROM
+			(
+			SELECT 
+				[myBackupset].[type],
+				MIN([myBackupset].[backup_set_id]) AS [backup_set_id]
+			FROM 
+				[master].[sys].[databases] AS myDatabase WITH (READPAST)
+				INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+			WHERE 
+				[myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+				AND [myBackupset].[is_copy_only] = 0
+				AND [myDatabase].[name] = @myDBName
+				AND [myBackupset].[backup_finish_date] IS NOT NULL
+				AND [myBackupset].[backup_start_date] > @myRestoreTo
+			GROUP BY
+				[myBackupset].[type]
+			) AS myLatestBackupSetId
+			PIVOT (
+				MAX([backup_set_id])
+				FOR [type] IN ([D],[I],[L])
+			) AS myPivot
+
         -------------------------------------------Create required functions in tempdb
         IF NOT EXISTS (SELECT 1 FROM [tempdb].[sys].[all_objects] WHERE type='FN' AND name = 'fn_FileExists')
         BEGIN
@@ -392,9 +422,9 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'D'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
-                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
-                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
+                AND (CASE WHEN @myRestoreToLatestFullBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestFullBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestFullBackupsetId END)
+                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND (@myIsFullBackupStrategyForced=1 OR 1 IN (" + $myAcceptedStrategies + "))
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
@@ -437,7 +467,7 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'I'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
-                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
+                AND (CASE WHEN @myRestoreToLatestDiffBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestDiffBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestDiffBackupsetId END)
                 AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND (@myIsFullBackupStrategyForced=1 OR 1 IN (" + $myAcceptedStrategies + "))
 
@@ -486,13 +516,13 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
-                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
-                AND [myMediaIsAvailable].[IsFilesExists]=1
+                AND (CASE WHEN @myRestoreToLatestLogBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestLogBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestLogBackupsetId END)
                 AND	(
                     [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1)
                     OR
                     (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=1) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     )
+                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND (@myIsFullBackupStrategyForced=1 OR 1 IN (" + $myAcceptedStrategies + "))
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
@@ -612,9 +642,9 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'D'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
-                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
-                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
+                AND (CASE WHEN @myRestoreToLatestFullBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestFullBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestFullBackupsetId END)
+                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND (@myIsFullBackupStrategyForced=1 OR 2 IN (" + $myAcceptedStrategies + "))
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
@@ -657,13 +687,13 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
-                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
-                AND [myMediaIsAvailable].[IsFilesExists]=1
+                AND (CASE WHEN @myRestoreToLatestLogBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestLogBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestLogBackupsetId END)
                 AND	(
                     [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2)
                     OR
                     (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=2) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     )
+                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND (@myIsFullBackupStrategyForced=1 OR 2 IN (" + $myAcceptedStrategies + "))
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
@@ -769,10 +799,10 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'I'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
-                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
-                AND [myMediaIsAvailable].[IsFilesExists]=1
-                AND [myBackupset].[database_backup_lsn]=@myDiffBackupBaseLsn
+                AND (CASE WHEN @myRestoreToLatestDiffBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestDiffBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestDiffBackupsetId END)
                 AND CASE WHEN @myDiffBackupBaseLsn = 0 THEN @myLowerBoundOfFileScan ELSE [myBackupset].[backup_start_date] END >= @myLowerBoundOfFileScan
+                AND [myBackupset].[database_backup_lsn]=@myDiffBackupBaseLsn
+                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND 3 IN (" + $myAcceptedStrategies + ")
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
@@ -815,13 +845,13 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
-                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
-                AND [myMediaIsAvailable].[IsFilesExists]=1
+                AND (CASE WHEN @myRestoreToLatestLogBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestLogBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestLogBackupsetId END)
                 AND	(
                     [myBackupset].[first_lsn] >= (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=3)
                     OR
                     (SELECT MIN([FirstLsn]) FROM #myResult WHERE [StrategyNo]=3) BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     )
+                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND 3 IN (" + $myAcceptedStrategies + ")
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
@@ -928,14 +958,14 @@ Class DatabaseShipping {
                 AND [myDatabase].[name] = @myDBName
                 AND [myBackupset].[type] = 'L'
                 AND [myBackupset].[backup_finish_date] IS NOT NULL
-                AND [myBackupset].[backup_finish_date] <= @myRestoreTo
-                AND [myMediaIsAvailable].[IsFilesExists]=1
+                AND (CASE WHEN @myRestoreToLatestLogBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestLogBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestLogBackupsetId END)
                 AND CASE WHEN @myLatestLsn = 0 THEN @myLowerBoundOfFileScan ELSE [myBackupset].[backup_start_date] END >= @myLowerBoundOfFileScan
                 AND	(
                     @myLatestLsn BETWEEN [myBackupset].[first_lsn] AND [myBackupset].[last_lsn]
                     OR
                     [myBackupset].[first_lsn] >= @myLatestLsn
                     )
+                AND [myMediaIsAvailable].[IsFilesExists]=1
                 AND 4 IN (" + $myAcceptedStrategies + ")
             
             INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
@@ -1315,6 +1345,9 @@ Class DatabaseShipping {
             [decimal]$myLatestLSN=0
             [decimal]$myDiffBackupBaseLsn=0
             [string]$myKnownRecoveryFork=""
+            [string]$myCurrentMachineName=([Environment]::MachineName).ToUpper()
+            [string]$mySourceBackupMachineName=$null
+            [string]$mySourceBackupFilePath=$null
 
             #--=======================Validate input parameters
             if ($SourceDB.Trim().Length -eq 0) {
@@ -1331,7 +1364,7 @@ Class DatabaseShipping {
             if ($this.Instance_ConnectivityTest($this.SourceInstanceConnectionString,$SourceDB) -eq $false) {
                 $this.LogWriter.Write($this.LogStaticMessage+"Source Instance Connection failure.",[LogType]::ERR)
                 throw ($this.LogStaticMessage+"Source Instance Connection failure.")
-            } 
+            }
 
             #--=======================Check destination connectivity
             $this.LogWriter.Write($this.LogStaticMessage+("Check Destination Instance Connectivity of " + $this.DestinationInstanceConnectionString),[LogType]::INF)
@@ -1388,9 +1421,16 @@ Class DatabaseShipping {
                 throw ($this.LogStaticMessage+"FileRepositoryPath is not accesible.")
             }
 
+            $myCurrentMachineName=([Environment]::MachineName).ToUpper()
+            $mySourceBackupMachineName = $this.Database_GetServerName($this.SourceInstanceConnectionString).ToUpper()
             foreach ($myBackupFile in $myBackupFileList){
-                Copy-Item -Path ($myBackupFile.RemoteSourceFilePath) -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop
-                $this.LogWriter.Write($this.LogStaticMessage+("Copy backup file from " + ($myBackupFile.RemoteSourceFilePath) + " to " + ($this.FileRepositoryUncPath)),[LogType]::INF)
+                if ($myCurrentMachineName -eq $mySourceBackupMachineName) {     #Decide to use local path of source server backup file(s) or UNC path of backup file(s)
+                    $mySourceBackupFilePath=$myBackupFile.FilePath
+                } else {
+                    $mySourceBackupFilePath=$myBackupFile.RemoteSourceFilePath
+                }
+                Copy-Item -Path $mySourceBackupFilePath -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop
+                $this.LogWriter.Write($this.LogStaticMessage+("Copy backup file from " + $mySourceBackupFilePath + " to " + ($this.FileRepositoryUncPath)),[LogType]::INF)
             }
 
             #--=======================Drop not in restoring mode databases
