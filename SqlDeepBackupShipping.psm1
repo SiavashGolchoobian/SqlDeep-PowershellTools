@@ -6,7 +6,6 @@ enum DatabaseGroup {
     USER_DATABASES
 }
 enum BackupType {
-    ALL
     FULL
     DIFF
     LOG
@@ -29,6 +28,49 @@ enum HostOperation {
     MKDIR
     DIR
     ISALIVE
+}
+Class BackupFile {
+    [int]$FamilySequenceNumber
+    [int]$MaxFamilySequenceNumber
+    [string]$DatabaseName
+    [datetime]$BackupStartTime
+    [datetime]$BackupFinishTime
+    [datetime]$ExpirationDate
+    [string]$BackupType
+    [decimal]$FirstLsn
+    [decimal]$LastLsn
+    [int]$MediaSetId
+    [string]$FilePath
+    [string]$FileName
+    [string]$RemoteSourceFilePath
+    [string]$RemoteRepositoryUncFilePath
+    
+    BackupFile([string]$SourceServerName,[int]$FamilySequenceNumber,[int]$MaxFamilySequenceNumber,[string]$DatabaseName,[datetime]$BackupStartTime,[datetime]$BackupFinishTime,[datetime]$ExpirationDate,[string]$BackupType,[decimal]$FirstLsn,[decimal]$LastLsn,[int]$MediaSetId,[string]$FilePath,[string]$FileName){
+        $this.FamilySequenceNumber=$FamilySequenceNumber
+        $this.MaxFamilySequenceNumber=$MaxFamilySequenceNumber
+        $this.DatabaseName=$DatabaseName
+        $this.BackupStartTime=$BackupStartTime
+        $this.BackupFinishTime=$BackupFinishTime
+        $this.ExpirationDate=$ExpirationDate
+        $this.BackupType=$BackupType
+        $this.FirstLsn=$FirstLsn
+        $this.LastLsn=$LastLsn
+        $this.MediaSetId=$MediaSetId
+        $this.FilePath=$FilePath
+        $this.FileName=$FileName
+        $this.RemoteSourceFilePath=$this.CalcRemoteSourceFilePath($SourceServerName)
+    }
+    hidden [string]CalcRemoteSourceFilePath([string]$Server) {    #Converting local path to UNC path
+        Write-Verbose "Processing Started."
+        [string]$myAnswer=$null
+        if ($this.FilePath.Contains('\\') -eq $false) {
+            $myUncPath='\\' + $Server + "\" + ($this.FilePath.Split(':') -Join '$')
+            $myAnswer=$myUncPath
+        }else {
+            $myAnswer=$this.FilePath
+        }
+        return $myAnswer
+    }
 }
 Class BackupShipping {
     [string]$SourceInstanceConnectionString
@@ -128,6 +170,100 @@ hidden [bool]Test_InstanceConnectivity([string]$ConnectionString,[string]$Databa
     }
     return $myAnswer
 }
+hidden [string]Get_UntransferredBackups([string]$ConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes,[int]$HoursToScanForUntransferredBackups,[string]$TransferedSuffix) {  #Get list of untransferred backup files list
+    $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+    [string]$myAnswer=$null
+    [string]$mySourceServerName=$null
+    [string]$myCommand=$null
+    [string]$myDatabases=$null
+    [string]$myBackupTypes=$null
+
+    $this.LogWriter.Write($this.LogStaticMessage+"Get Source instance server name.",[LogType]::INF)
+    $mySourceServerName=$this.Database_GetServerName($ConnectionString)
+    if ($null -eq $mySourceServerName) {
+        $this.LogWriter.Write($this.LogStaticMessage+"Source server name is empty.",[LogType]::ERR)
+        throw "Source server name is empty."
+    }
+
+    $myDatabases=Join-String -InputObject $Databases -Separator "," -SingleQuote
+    $myBackupTypes=(Join-String -InputObject $BackupTypes -Separator "," -SingleQuote).Replace("FULL","D").Replace("DIFF","I").Replace("LOG","L")
+    $myCommand="
+    DECLARE @myCurrentDateTime DATETIME;
+    DECLARE @HoursToScanForUntransferredBackups INT;
+    DECLARE @TransferedSuffix NVARCHAR(20);
+    
+    SET @myCurrentDateTime = GETDATE();
+    SET @HoursToScanForUntransferredBackups = -1*ABS("+ $HoursToScanForUntransferredBackups.ToString() +");
+    SET @TransferedSuffix = N'"+ $TransferedSuffix +"';    
+    
+    SELECT
+        [myMediaSet].[media_set_id],																												--PK
+        CAST([myMediaSet].[family_sequence_number] AS INT)															 AS [FamilySequenceNumber],	--PK
+        [myUniqueBackupSet].[database_name]																			 AS [DatabaseName],
+        [myUniqueBackupSet].[backup_start_date]																		 AS [BackupStartTime],
+        [myUniqueBackupSet].[backup_finish_date]																	 AS [BackupFinishTime],
+        [myUniqueBackupSet].[expiration_date]																		 AS [ExpirationDate],
+        UPPER([myUniqueBackupSet].[type])																			 AS [BackupType],
+        CAST([myUniqueBackupSet].[first_lsn] AS DECIMAL(25, 0))														 AS [FirstLSN],
+        CAST([myUniqueBackupSet].[last_lsn] AS DECIMAL(25, 0))														 AS [LastLSN],
+        [myMediaSet].[physical_device_name]																			 AS [FilePath],
+        RIGHT([myMediaSet].[physical_device_name], CHARINDEX('\', REVERSE([myMediaSet].[physical_device_name])) - 1) AS [FileName],
+        MAX(CAST([myMediaSet].[family_sequence_number] AS INT)) OVER (PARTITION BY [myMediaSet].[media_set_id])		 AS [MaxFamilySequenceNumber]
+    FROM
+        [msdb].[dbo].[backupmediafamily] AS [myMediaSet]
+        INNER JOIN (
+            SELECT
+                [myBackupSet].[media_set_id],
+                MAX([myBackupSet].[machine_name])		AS [machine_name],
+                MAX([myBackupSet].[server_name])		AS [server_name],
+                MAX([myBackupSet].[database_name])		AS [database_name],
+                MAX([myBackupSet].[backup_start_date])	AS [backup_start_date],
+                MAX([myBackupSet].[backup_finish_date]) AS [backup_finish_date],
+                MAX([myBackupSet].[expiration_date])	AS [expiration_date],
+                MAX([myBackupSet].[type])				AS [type],
+                MIN([myBackupSet].[first_lsn])			AS [first_lsn],
+                MAX([myBackupSet].[last_lsn])			AS [last_lsn]
+            FROM
+                [msdb].[dbo].[backupset]			AS [myBackupSet]
+                INNER JOIN [sys].[databases] AS [myDatabases] ON [myBackupSet].[database_name] = [myDatabases].[name]
+            WHERE
+                [myBackupset].[is_copy_only] = 0
+                AND [myDatabases].[name] IN ("+$myDatabases+")
+                AND [myBackupSet].[type] IN ("+$myBackupTypes+")
+                AND [myBackupSet].[backup_finish_date] IS NOT NULL
+                AND [myBackupSet].[backup_start_date] >= DATEADD(
+                                                                    HOUR,
+                                                                    @HoursToScanForUntransferredBackups,
+                                                                    @myCurrentDateTime
+                                                                )
+                AND [myBackupSet].[server_name] = @@ServerName
+                AND [myBackupSet].[description] NOT LIKE '%' + @TransferedSuffix + '%'
+            GROUP BY
+                [myBackupSet].[media_set_id]
+        ) AS [myUniqueBackupSet] ON [myUniqueBackupSet].[media_set_id] = [myMediaSet].[media_set_id]
+    WHERE
+        [myMediaSet].[mirror] = 0
+    ORDER BY
+        [myUniqueBackupSet].[backup_start_date] ASC,
+        [myMediaSet].[media_set_id] ASC;
+    "
+    try{
+        #$this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Query Unsent Backupfiles list.",[LogType]::INF)
+        [System.Data.DataRow[]]$myRecords=$null
+        $myRecords=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+        if ($null -ne $myRecords){
+            [System.Collections.ArrayList]$myBackupFileCollection=$null
+            $myBackupFileCollection=[System.Collections.ArrayList]::new()
+            $myRecords|ForEach-Object{$myBackupFileCollection.Add([BackupFile]::New($mySourceServerName,$_.FamilySequenceNumber,$_.MaxFamilySequenceNumber,$_.DatabaseName,$_.BackupStartTime,$_.BackupFinishTime,$_.ExpirationDate,$_.BackupType,$_.FirstLsn,$_.LastLsn,$_.MediaSetId,$_.FilePath,$_.FileName))}
+            $myAnswer=$myBackupFileCollection.ToArray([BackupFile])
+        }
+    }Catch{
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+        $myAnswer.Clear()
+    }
+    return $myAnswer
+ }
 hidden [string]Get_DatabaseServerName([string]$ConnectionString) {  #Get database server netbios name
     $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
     [string]$myAnswer=$null
@@ -442,7 +578,9 @@ hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCr
         if ($this.Test_InstanceConnectivity($this.SourceInstanceConnectionString,"msdb") -eq $false) {
             $this.LogWriter.Write($this.LogStaticMessage+"Source Instance Connection failure.", [LogType]::ERR) 
             throw ($this.LogStaticMessage+"Source Instance Connection failure.")
-        } 
+        }
+        $this.LogWriter.Write($this.LogStaticMessage+"Get Source Instance Name of " + $this.SourceInstanceConnectionString, [LogType]::INF) 
+        $mySourceInstanceName=$this.Get_DatabaseInstanceName($this.SourceInstanceConnectionString) 
         #--=======================Check shipped files log table sql instance connectivity
         $this.LogWriter.Write($this.LogStaticMessage+"Test shipped files log sql instance connectivity.", [LogType]::INF) 
         if ($this.Instance_ConnectivityTest($this.LogWriter.LogInstanceConnectionString,"master") -eq $false) {
@@ -473,9 +611,12 @@ hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCr
             $this.LogWriter.Write($this.LogStaticMessage+"Destination is not avilable.", [LogType]::ERR) 
             throw "Destination is not avilable."
         }
-
-        $this.LogWriter.Write($this.LogStaticMessage+"Get Source Instance Name of " + $this.SourceInstanceConnectionString, [LogType]::INF) 
-        $mySourceInstanceName=$this.Get_DatabaseInstanceName($this.SourceInstanceConnectionString)
+        #--=======================Get files to transfer
+        $this.LogWriter.Write($this.LogStaticMessage+"Get list of untransferred backup files from " + $this.SourceInstanceConnectionString + " with DatabasesToTransfer=" + $this.DatabasesToTransfer + ", ExceptedDatabasesForTransfer=" + $this.ExceptedDatabasesForTransfer + ", BackupTypeToTransfer=" + $this.BackupTypeToTransfer + ", HoursToScanForUntransferredBackups=" + $this.HoursToScanForUntransferredBackups + ", TransferedSuffix=" + $this.TransferedSuffix, [LogType]::INF) 
+        $myUntransferredBackups=SourceInstance.GetUntransferredBackups -SourceInstanceConnectionString $SourceInstanceConnectionString -DatabasesToTransfer $DatabasesToTransfer -ExceptedDatabasesForTransfer $ExceptedDatabasesForTransfer -BackupTypeToTransfer $BackupTypeToTransfer -HoursToScanForUntransferredBackups $HoursToScanForUntransferredBackups -TransferedSuffix $TransferedSuffix
+        if ($null -eq $myUntransferredBackups) {
+        Write-Log -Type INF -Content "There is no file(s) to transfer." -Terminate
+        }
     }
     catch {
         <#Do this if a terminating exception happens#>

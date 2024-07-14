@@ -33,6 +33,130 @@
     
 #>
 Import-Module -Name SqlServer
+Function ExecuteSql     #Execute SQL Command via ADO.NET
+{
+    [CmdletBinding()]
+    [Alias()]
+    Param
+    (    
+        [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$false, Position=0)]
+        [string]$ConnectionString,
+
+        [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$false, Position=1)]
+        [string]$CommandText,
+
+        [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$false, Position=2)]
+		[ValidateSet('NonQuery' ,'Scalar', 'Binary' ,'DataSet')]
+        [string]$CommandType,
+
+        [Parameter(Mandatory=$false, ValueFromPipelineByPropertyName=$false, Position=3)]
+        [string]$DestinationFilePath
+    )
+
+    Begin
+    {
+        if($CommandType -notin ('NonQuery' ,'Scalar' ,'Binary' ,'DataSet') )
+        {
+            throw 'The ''$CommandType'' parameter contains an invalid value Valid values are: ''NonQuery'' ,''Scalar'' ,''Binary'' ,''DataSet''';
+        }
+
+        try
+        {
+            $mySqlConnection = New-Object System.Data.SqlClient.SqlConnection($ConnectionString);
+            $mySqlCommand = $mySqlConnection.CreateCommand();
+            $mySqlConnection.Open(); 
+            $mySqlCommand.CommandText = $CommandText;                      
+            
+            # NonQuery
+            if($CommandType -eq 'NonQuery')
+            {
+                $mySqlCommand.ExecuteNonQuery();
+                return;
+            }
+            
+            # Scalar
+            if($CommandType -eq 'Scalar')
+            {       
+                $myVal = $mySqlCommand.ExecuteScalar();
+                return $myVal;
+            }
+            
+            # DataSet
+            if($CommandType -eq "DataSet")
+            {
+                $myDataSet = New-Object System.Data.DataSet;
+                $mySqlDataAdapter = New-Object System.Data.SqlClient.SqlDataAdapter;
+                $mySqlDataAdapter.SelectCommand = $mySqlCommand;
+                $mySqlDataAdapter.Fill($myDataSet);
+                return $myDataSet;
+            }
+
+            # Binary
+            if($CommandType -eq 'Binary')
+            {       
+                Write-Output ("Single file downloader: Downloading " + $DestinationFilePath + " ...")
+				$myAnswer=$true;
+                $myBufferSize = 8192*8;
+                # New Command and Reader
+                $myReader = $mySqlCommand.ExecuteReader();
+        
+                # Create a byte array for the stream.
+                $myOut = [array]::CreateInstance('Byte', $myBufferSize)
+
+                # Looping through records
+                While ($myReader.Read())
+                {
+                    #Create Directory if not exists and remove any Existing item
+                    $myFolderPath=Split-Path $DestinationFilePath
+                    IF (-not (Test-Path -Path $myFolderPath -PathType Container)) {
+                        New-Item -Path $myFolderPath -ItemType Directory -Force
+                        #$myDestinationFolderPath=$DestinationFilePath.Substring(0,($DestinationFilePath.Length-$DestinationFilePath.Split("\")[-1].Length))
+                        #New-Item -ItemType Directory -Path $myDestinationFolderPath -Force
+                    }
+                    IF (Test-Path -Path $DestinationFilePath -PathType Leaf) {Move-Item -Path $DestinationFilePath -Force}
+            
+                    # New BinaryWriter, write content to specified file on (zero based) first column (FileContent)
+                    $myFileStream = New-Object System.IO.FileStream $DestinationFilePath, Create, Write;
+                    $myBinaryWriter = New-Object System.IO.BinaryWriter $myFileStream;
+
+                    $myStart = 0;
+                    # Read first byte stream from (zero based) first column (FileContent)
+                    $myReceived = $myReader.GetBytes(0, $myStart, $myOut, 0, $myBufferSize - 1);
+                    While ($myReceived -gt 0)
+                    {
+						$myBinaryWriter.Write($myOut, 0, $myReceived);
+						$myBinaryWriter.Flush();
+						$myStart += $myReceived;
+						# Read next byte stream from (zero based) first column (FileContent)
+						$myReceived = $myReader.GetBytes(0, $myStart, $myOut, 0, $myBufferSize - 1);
+                    }
+
+                    $myBinaryWriter.Close();
+                    $myFileStream.Close();
+                }
+                # Closing & Disposing all objects            
+                if (-not (Test-Path -Path $DestinationFilePath) -or -not ($myFileStream)) {
+                    $myAnswer=$false
+                }
+                if ($myFileStream) {$myFileStream.Dispose()};
+                $myReader.Close();
+                return $myAnswer
+            }
+        }
+        catch
+        {       
+            Write-Error($_.ToString())
+            Throw;
+        }
+        finally
+        {
+            $mySqlCommand.Dispose();
+            $mySqlConnection.Close();
+            $mySqlConnection.Dispose();
+            #[System.Data.SqlClient.SqlConnection]::ClearAllPools();  
+        }
+    }
+}
 Function DownloadSingleFileFromDB #Export a BLOB file from anywhere to disk
 {
     Param
@@ -42,65 +166,12 @@ Function DownloadSingleFileFromDB #Export a BLOB file from anywhere to disk
         [Parameter(Mandatory=$true)][string]$DestinationFilePath
         )
     [bool]$myAnswer=$true;
-    Write-Output ("Single file downloader: Downloading " + $DestinationFilePath + " ...")
-	try {
-        $myBufferSize = 8192*8;
-        # Open ADO.NET Connection
-        $myConnection = New-Object Data.SqlClient.SqlConnection;
-        $myConnection.ConnectionString = $ConnectionString;
-        $myConnection.Open();
-
-        # New Command and Reader
-        $myCmd = New-Object Data.SqlClient.SqlCommand ($QueryToGetSpecificFile, $myConnection);
-        $myReader = $myCmd.ExecuteReader();
-        
-        # Create a byte array for the stream.
-        $myOut = [array]::CreateInstance('Byte', $myBufferSize)
-
-        # Looping through records
-        While ($myReader.Read())
-        {
-            #Create Directory if not exists and remove any Existing item
-            $myFolderPath=Split-Path $DestinationFilePath
-            IF (-not (Test-Path -Path $myFolderPath -PathType Container)) {
-                New-Item -Path $myFolderPath -ItemType Directory -Force
-                #$myDestinationFolderPath=$DestinationFilePath.Substring(0,($DestinationFilePath.Length-$DestinationFilePath.Split("\")[-1].Length))
-                #New-Item -ItemType Directory -Path $myDestinationFolderPath -Force
-            }
-            IF (Test-Path -Path $DestinationFilePath -PathType Leaf) {Move-Item -Path $DestinationFilePath -Force}
-            
-            # New BinaryWriter, write content to specified file on (zero based) first column (FileContent)
-            $myFileStream = New-Object System.IO.FileStream $DestinationFilePath, Create, Write;
-            $myBinaryWriter = New-Object System.IO.BinaryWriter $myFileStream;
-
-            $myStart = 0;
-            # Read first byte stream from (zero based) first column (FileContent)
-            $myReceived = $myReader.GetBytes(0, $myStart, $myOut, 0, $myBufferSize - 1);
-            While ($myReceived -gt 0)
-            {
-            $myBinaryWriter.Write($myOut, 0, $myReceived);
-            $myBinaryWriter.Flush();
-            $myStart += $myReceived;
-            # Read next byte stream from (zero based) first column (FileContent)
-            $myReceived = $myReader.GetBytes(0, $myStart, $myOut, 0, $myBufferSize - 1);
-            }
-
-            $myBinaryWriter.Close();
-            $myFileStream.Close();
-        }
-
-        # Closing & Disposing all objects            
-        if ($myFileStream) {$myFileStream.Dispose()} else {$myAnswer=$false};
-        $myReader.Close();
-        $myCmd.Dispose();
-        $myConnection.Close();
-    } catch {
+    
+    try{
+        $myAnswer=ExecuteSql -ConnectionString $ConnectionString -CommandText $QueryToGetSpecificFile -CommandType Binary -DestinationFilePath $DestinationFilePath
+    }catch {
         $myAnswer=$false
         Write-Error($_.ToString())
-    }
-
-    IF (-not (Test-Path -Path $DestinationFilePath) -or -not ($myAnswer)) {
-        throw ($DestinationFilePath + " is not found or exported in current execution.")
     }
     return $myAnswer
 }
