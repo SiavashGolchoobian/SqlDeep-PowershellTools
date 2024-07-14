@@ -13,11 +13,11 @@ Class InstanceObject {  # Data structure for Instance Object
     [string]$PatchLevel
 	
 	InstanceProperty([string]$MachineName,[string]$DomainName,[string]$InstanceName,[string]$InstanceRegName,[string]$InstancePort,[bool]$ForceEncryption,[string]$DefaultDataPath,[string]$DefaultLogPath,[string]$DefaultBackupPath,[string]$Collation,[string]$PatchLevel){
-		$this.MachineName=$MachineName;
-		$this.DomainName=$DomainName;
-		$this.InstanceName=$InstanceName;
-		$this.InstanceRegName=$InstanceRegName;
-		$this.InstancePort=$InstancePort;
+        $this.MachineName=$MachineName;
+        $this.DomainName=$DomainName;
+        $this.InstanceName=$InstanceName;
+        $this.InstanceRegName=$InstanceRegName;
+        $this.InstancePort=$InstancePort;
         $this.ForceEncryption=$ForceEncryption;
         $this.DefaultDataPath=$DefaultDataPath;
         $this.DefaultLogPath=$DefaultLogPath;
