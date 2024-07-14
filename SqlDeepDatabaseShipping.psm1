@@ -218,6 +218,7 @@ Class DatabaseShipping {
         [BackupFile[]]$myAnswer=$null
 
         $this.LogWriter.Write($this.LogStaticMessage+"Get Source instance server name.",[LogType]::INF)
+        [string]$mySourceServerName=$null
         $mySourceServerName=$this.Database_GetServerName($ConnectionString)
         if ($null -eq $mySourceServerName) {
             $this.LogWriter.Write($this.LogStaticMessage+"Source server name is empty.",[LogType]::ERR)
@@ -226,9 +227,9 @@ Class DatabaseShipping {
 
         # Generate acceptable strategies list for TSQL
         $this.LogWriter.Write($this.LogStaticMessage+"Determine PreferredStrategies started.",[LogType]::INF)
-        [string]$myAcceptedStrategies=""
+        [RestoreStrategy[]]$Strategies=$null
+        [string]$myAcceptedStrategies=$null
         if ($LatestLSN -eq 0 -and $DiffBackupBaseLsn -eq 0){    #In this case Diff and Log backups are not usable and we should use strategies containes Full backup files
-            [RestoreStrategy[]]$Strategies=$null
             $Strategies = $this.PreferredStrategies | Where-Object -Property value__ -NotIn ( ([RestoreStrategy]::DiffLog).value__ , ([RestoreStrategy]::Log).value__ ) #Removing any non-full backup strategies from list
             if (!($Strategies -contains [RestoreStrategy]::FullDiffLog) -and !($this.PreferredStrategies -contains [RestoreStrategy]::FullLog)){    #Add all full backup strategies to the list, if there is not atleast one full backup strategy found in the list
                 $Strategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog
@@ -245,7 +246,7 @@ Class DatabaseShipping {
 
         # Generate FileExistenceCheck command
         $this.LogWriter.Write($this.LogStaticMessage+"Determine File Existence Check according to SkipBackupFilesExistenceCheck started.",[LogType]::INF)
-        [string]$myBackupFileExistenceCheckCommand=""
+        [string]$myBackupFileExistenceCheckCommand=$null
         if ($this.SkipBackupFilesExistenceCheck){
             $myBackupFileExistenceCheckCommand="CAST(1 AS BIT) AS IsFilesExists"
         }else{
@@ -253,10 +254,13 @@ Class DatabaseShipping {
         }
 
         # Generate RecoveryTime
-        [string]$myRestoreTo=(Get-Date).ToString()
+        [string]$myRestoreTo=$null
+        $myRestoreTo=(Get-Date).ToString()
         if ($this.RestoreTo) {$myRestoreTo=($this.RestoreTo).ToString()}
 
-        [string]$myCommand = "
+        # Generate BackupFileListQuery
+        [string]$myCommand=$null
+        $myCommand = "
         USE [tempdb];
         DECLARE @myDBName AS NVARCHAR(255);
         DECLARE @myLatestLsn NUMERIC(25,0);
