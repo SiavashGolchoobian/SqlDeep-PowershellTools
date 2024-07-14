@@ -27,18 +27,19 @@ Class InstanceObject {  # Data structure for Instance Object
 	}
 }
 Class Instance {    # Instance level common functions
-    [bool]Test_InstanceConnectivity([string]$ConnectionString,[string]$DatabaseName) {  # Test Instance connectivity
-        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+    static [bool]Test_InstanceConnectivity([string]$ConnectionString,[string]$DatabaseName) {  # Test Instance connectivity
+        #$this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [bool]$myAnswer=$false
         try{
-            $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-            if ($null -ne $myRecord) {$myAnswer=$true} else {$myAnswer=$false}
+            $myAnswer=Database.Test_DatabaseConnectivity($ConnectionString,"master")
         }Catch{
-            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+            $myAnswer=$false;
+            Write-Error($_.ToString());
+            throw;
         }
         return $myAnswer
     }
-    [InstanceObject[]]Get_InstanceInfo() {  # Retrive current machine sql instance(s) and it's related info from windows registery
+    static [InstanceObject[]]Get_InstanceInfo() {  # Retrive current machine sql instance(s) and it's related info from windows registery
         [InstanceObject[]]$myAnswer=$null;
         [string]$myMachineName=$null;
         [string]$myDomainName=$null;
@@ -52,39 +53,44 @@ Class Instance {    # Instance level common functions
             $myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
             $myRegKey=Get-ItemProperty -Path $myRegInstanceFilter
             $myRegKey.psobject.Properties | Where-Object -Property Name -NotIn ("PSPath","PSParentPath","SQL","PSChildName","PSDRIVE","PSProvider") | ForEach-Object{Write-Host ($myMachineName+","+$myDomainName+","+$_.Name+","+$_.Value);$myInstanceCollection.Add([InstanceObject]::New($myMachineName,$myDomainName,$_.Name,$_.Value,'1433',$false,"","","","",""))}
-            $myInstanceCollection | %{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$myInstance.InstanceRegName+'\MSSQLServer\SuperSocketNetLib\Tcp\IPAll';$_.InstancePort=(Get-ItemProperty -Path $myRegInstanceFilter).TcpPort}
-            $myInstanceCollection | %{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$myInstance.InstanceRegName+'\MSSQLServer\SuperSocketNetLib';$_.ForceEncryption=(Get-ItemProperty -Path $myRegInstanceFilter).ForceEncryption}
-            $myInstanceCollection | %{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$myInstance.InstanceRegName+'\MSSQLServer';$_.DefaultDataPath=(Get-ItemProperty -Path $myRegInstanceFilter).DefaultData;$_.DefaultLogPath=(Get-ItemProperty -Path $myRegInstanceFilter).DefaultLog;$_.DefaultBackupPath=(Get-ItemProperty -Path $myRegInstanceFilter).BackupDirectory}
-            $myInstanceCollection | %{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$myInstance.InstanceRegName+'\Setup';$_.Collation=(Get-ItemProperty -Path $myRegInstanceFilter).Collation;$_.PatchLevel=(Get-ItemProperty -Path $myRegInstanceFilter).PatchLevel}
+            $myInstanceCollection | ForEach-Object{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$myInstance.InstanceRegName+'\MSSQLServer\SuperSocketNetLib\Tcp\IPAll';$_.InstancePort=(Get-ItemProperty -Path $myRegInstanceFilter).TcpPort}
+            $myInstanceCollection | ForEach-Object{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$myInstance.InstanceRegName+'\MSSQLServer\SuperSocketNetLib';$_.ForceEncryption=(Get-ItemProperty -Path $myRegInstanceFilter).ForceEncryption}
+            $myInstanceCollection | ForEach-Object{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$myInstance.InstanceRegName+'\MSSQLServer';$_.DefaultDataPath=(Get-ItemProperty -Path $myRegInstanceFilter).DefaultData;$_.DefaultLogPath=(Get-ItemProperty -Path $myRegInstanceFilter).DefaultLog;$_.DefaultBackupPath=(Get-ItemProperty -Path $myRegInstanceFilter).BackupDirectory}
+            $myInstanceCollection | ForEach-Object{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$myInstance.InstanceRegName+'\Setup';$_.Collation=(Get-ItemProperty -Path $myRegInstanceFilter).Collation;$_.PatchLevel=(Get-ItemProperty -Path $myRegInstanceFilter).PatchLevel}
             $myAnswer=$myInstanceCollection.ToArray([InstanceObject])
         }
         catch
         {
-            Write-Log -Type WRN -Content ($_.ToString()).ToString()
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+            throw;
         }
         return $myAnswer
     }
 }
 Class Database {    # Database level common functions
-    [bool]Test_DatabaseConnectivity([string]$ConnectionString,[string]$DatabaseName) {  # Test Database connectivity
-        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+    static [bool]Test_DatabaseConnectivity([string]$ConnectionString,[string]$DatabaseName) {  # Test Database connectivity
+        #$this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [bool]$myAnswer=$false
         [string]$myCommand=$null
         
-        $DatabaseName=$this.Clean_Parameters($DatabaseName)
+        $DatabaseName=Data.Clean_Parameters($DatabaseName)
         $myCommand="
             USE ["+$DatabaseName+"];
-            SELECT TOP 1 1 AS Result FROM [master].[sys].[databases] WHERE name = '" + $DatabaseName + "';
+            SELECT [name] AS Result FROM [master].[sys].[databases] WHERE name = '" + $DatabaseName + "';
             "
         try{
             $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
             if ($null -ne $myRecord) {$myAnswer=$true} else {$myAnswer=$false}
         }Catch{
-            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+            $myAnswer=$false;
+            Write-Error($_.ToString());
+            throw;
+            #$this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         }
         return $myAnswer
     }
-    [bool]Execute_SqlCommand([string]$ConnectionString,[string]$CommandText)     # Execute SQL Command via ADO.NET
+    static [bool]Execute_SqlCommand([string]$ConnectionString,[string]$CommandText)     # Execute SQL Command via ADO.NET
     {
         [bool]$myAnswer=$false
         try
@@ -111,7 +117,7 @@ Class Database {    # Database level common functions
         }
         return $myAnswer
     }
-    [System.Data.DataSet]Execute_SqlQuery([string]$ConnectionString,[string]$CommandText)     # Execute SQL Query via ADO.NET
+    static [System.Data.DataSet]Execute_SqlQuery([string]$ConnectionString,[string]$CommandText)     # Execute SQL Query via ADO.NET
     {
         [System.Data.DataSet]$myAnswer=$null
         try
@@ -143,20 +149,33 @@ Class Database {    # Database level common functions
     }
 }
 Class Data {    # Data level common functions
-    [string]Clean_Parameters([string]$ParameterValue,[bool]$RemoveWildcard){  # Remove injection like characters
+    static [string]Clean_Parameters([string]$ParameterValue,[bool]$RemoveWildcard){  # Remove injection like characters
         [string]$myAnswer=$null        
         [string[]]$myProhibitedPhrases=$null
 
-        $myProhibitedPhrases.Add(";")
-        if ($RemoveWildcard)    {$myProhibitedPhrases.Add("%")}
-        $myAnswer=$this.Clean_String($ParameterValue,$myProhibitedPhrases)
+        try{
+            $myProhibitedPhrases.Add(";")
+            if ($RemoveWildcard)    {$myProhibitedPhrases.Add("%")}
+            $myAnswer=Data.Clean_String($ParameterValue,$myProhibitedPhrases)
+        }catch{
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+            throw;
+        }
         return $myAnswer
     }
-    [string]Clean_String([string]$InputString,[string[]]$ProhibitedPhrases){  # Remove Prohibited Phrases from InputString
+    static [string]Clean_String([string]$InputString,[string[]]$ProhibitedPhrases){  # Remove Prohibited Phrases from InputString
         [string]$myAnswer=$null
-        $myAnswer=$InputString
-        foreach ($ProhibitedPhrase in $ProhibitedPhrases){
-            $myAnswer=$myAnswer.Replace($ProhibitedPhrase,"")
+
+        try{
+            $myAnswer=$InputString
+            foreach ($ProhibitedPhrase in $ProhibitedPhrases){
+                $myAnswer=$myAnswer.Replace($ProhibitedPhrase,"")
+            }
+        }catch{
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+            throw;
         }
         return $myAnswer
     }
