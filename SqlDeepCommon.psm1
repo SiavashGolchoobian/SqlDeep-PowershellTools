@@ -33,8 +33,9 @@ Class Instance {    # Instance level common functions
         try{
             $myAnswer=Database.Test_DatabaseConnectivity($ConnectionString,"master")
         }Catch{
-            $myAnswer=$false
-            #$this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+            $myAnswer=$false;
+            Write-Error($_.ToString());
+            throw;
         }
         return $myAnswer
     }
@@ -60,7 +61,9 @@ Class Instance {    # Instance level common functions
         }
         catch
         {
-            Write-Log -Type WRN -Content ($_.ToString()).ToString()
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+            throw;
         }
         return $myAnswer
     }
@@ -80,6 +83,9 @@ Class Database {    # Database level common functions
             $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
             if ($null -ne $myRecord) {$myAnswer=$true} else {$myAnswer=$false}
         }Catch{
+            $myAnswer=$false;
+            Write-Error($_.ToString());
+            throw;
             #$this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         }
         return $myAnswer
@@ -147,16 +153,29 @@ Class Data {    # Data level common functions
         [string]$myAnswer=$null        
         [string[]]$myProhibitedPhrases=$null
 
-        $myProhibitedPhrases.Add(";")
-        if ($RemoveWildcard)    {$myProhibitedPhrases.Add("%")}
-        $myAnswer=Data.Clean_String($ParameterValue,$myProhibitedPhrases)
+        try{
+            $myProhibitedPhrases.Add(";")
+            if ($RemoveWildcard)    {$myProhibitedPhrases.Add("%")}
+            $myAnswer=Data.Clean_String($ParameterValue,$myProhibitedPhrases)
+        }catch{
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+            throw;
+        }
         return $myAnswer
     }
     static [string]Clean_String([string]$InputString,[string[]]$ProhibitedPhrases){  # Remove Prohibited Phrases from InputString
         [string]$myAnswer=$null
-        $myAnswer=$InputString
-        foreach ($ProhibitedPhrase in $ProhibitedPhrases){
-            $myAnswer=$myAnswer.Replace($ProhibitedPhrase,"")
+
+        try{
+            $myAnswer=$InputString
+            foreach ($ProhibitedPhrase in $ProhibitedPhrases){
+                $myAnswer=$myAnswer.Replace($ProhibitedPhrase,"")
+            }
+        }catch{
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+            throw;
         }
         return $myAnswer
     }
