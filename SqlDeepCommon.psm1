@@ -1,8 +1,8 @@
 Using module .\SqlDeepLogWriter.psm1
 Class InstanceObject {  # Data structure for Instance Object
     [string]$MachineName
-	[string]$DomainName
-	[string]$InstanceName
+    [string]$DomainName
+    [string]$InstanceName
     [string]$InstanceRegName
     [string]$InstancePort
     [bool]$ForceEncryption
