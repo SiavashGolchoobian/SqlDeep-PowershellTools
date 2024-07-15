@@ -143,8 +143,8 @@ Class Database {    # Database level common functions
         }
         return $myAnswer;
     }
-    static [string]Download_BLOB([string]$ConnectionString,[string]$CommandText,[string]$DestinationFilePath) {    # Download blobs from database to a file via ADO.NET
-        [string]$myAnswer=$null;
+    static [bool]Download_BLOB([string]$ConnectionString,[string]$CommandText,[string]$DestinationFilePath) {    # Download blobs from database to a file via ADO.NET
+        [bool]$myAnswer=$false;
         try
         {
             $mySqlConnection = New-Object System.Data.SqlClient.SqlConnection($ConnectionString);
@@ -190,9 +190,9 @@ Class Database {    # Database level common functions
                 $myFileStream.Close();
                 
                 if (-not (Test-Path -Path $DestinationFilePath) -or -not ($myFileStream)) {
-                    $myAnswer=$null;
+                    $myAnswer=$false;
                 } else {
-                    $myAnswer=$DestinationFilePath;
+                    $myAnswer=$true;
                 }
                 
                 # Closing & Disposing all objects
@@ -203,7 +203,7 @@ Class Database {    # Database level common functions
         }
         catch
         {       
-            $myAnswer=$null;
+            $myAnswer=$false;
             Write-Error($_.ToString());
             Throw;
         }
@@ -213,6 +213,33 @@ Class Database {    # Database level common functions
             $mySqlConnection.Close();
             $mySqlConnection.Dispose();
             #[System.Data.SqlClient.SqlConnection]::ClearAllPools();  
+        }
+        return $myAnswer;
+    }
+    static [bool]Download_BLOB([string]$ConnectionString,[hashtable]$FileQueryList,[string]$DestinationFolderPath) {    # Download multiple blobs from database to a folder via ADO.NET
+        [bool]$myAnswer=$false;
+        try{
+            [int]$myRequestCount=$FileQueryList.Count;
+            [int]$myDownloadedCount=0;
+            [bool]$myDownloadResult=$false;
+            if ($DestinationFolderPath[-1] -ne "\") {$DestinationFolderPath+="\"}
+            foreach ($myItem in $FileQueryList.GetEnumerator()) {
+                [string]$myFile=$myItem.Key.ToString().Trim();
+                [string]$myBlobQuery=$myItem.Value.ToString().Trim();
+                $myFilePath=$DestinationFolderPath + $myFile;
+                If ($myFile.Length -gt 0 -and $DestinationFolderPath.Length -gt 0) {
+                    Write-Output ("Multiple file downloader: Downloading " + $myFilePath + " ...");
+                    $myDownloadResult=Database.Download_BLOB($ConnectionString,$myBlobQuery,$myFilePath);
+                } else {
+                    $myDownloadResult=$false;
+                }
+                if ($myDownloadResult) {$myDownloadedCount+=1}
+            }
+            if ($myDownloadedCount -eq $myRequestCount) {$myAnswer=$true}
+        }catch{
+            $myAnswer=$false
+            Write-Error($_.ToString())
+            Throw;
         }
         return $myAnswer;
     }
