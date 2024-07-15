@@ -143,6 +143,79 @@ Class Database {    # Database level common functions
         }
         return $myAnswer;
     }
+    static [string]Download_BLOB([string]$ConnectionString,[string]$CommandText,[string]$DestinationFilePath) {    # Download blobs from database to a file via ADO.NET
+        [string]$myAnswer=$null;
+        try
+        {
+            $mySqlConnection = New-Object System.Data.SqlClient.SqlConnection($ConnectionString);
+            $mySqlCommand = $mySqlConnection.CreateCommand();
+            $mySqlConnection.Open(); 
+            $mySqlCommand.CommandText = $CommandText;                      
+            # New Command and Reader
+            $myReader = $mySqlCommand.ExecuteReader();
+    
+            # Create a byte array for the stream.
+            $myBufferSize = 8192*8;
+            $myOut = [array]::CreateInstance('Byte', $myBufferSize)
+
+            # Looping through records
+            While ($myReader.Read())
+            {
+                #Create Directory if not exists and remove any Existing item
+                $myFolderPath=Split-Path $DestinationFilePath
+                IF (-not (Test-Path -Path $myFolderPath -PathType Container)) {
+                    New-Item -Path $myFolderPath -ItemType Directory -Force
+                    #$myDestinationFolderPath=$DestinationFilePath.Substring(0,($DestinationFilePath.Length-$DestinationFilePath.Split("\")[-1].Length))
+                    #New-Item -ItemType Directory -Path $myDestinationFolderPath -Force
+                }
+                IF (Test-Path -Path $DestinationFilePath -PathType Leaf) {Move-Item -Path $DestinationFilePath -Force}
+        
+                # New BinaryWriter, write content to specified file on (zero based) first column (FileContent)
+                $myFileStream = New-Object System.IO.FileStream $DestinationFilePath, Create, Write;
+                $myBinaryWriter = New-Object System.IO.BinaryWriter $myFileStream;
+
+                $myStart = 0;
+                # Read first byte stream from (zero based) first column (FileContent)
+                $myReceived = $myReader.GetBytes(0, $myStart, $myOut, 0, $myBufferSize - 1);
+                While ($myReceived -gt 0)
+                {
+                    $myBinaryWriter.Write($myOut, 0, $myReceived);
+                    $myBinaryWriter.Flush();
+                    $myStart += $myReceived;
+                    # Read next byte stream from (zero based) first column (FileContent)
+                    $myReceived = $myReader.GetBytes(0, $myStart, $myOut, 0, $myBufferSize - 1);
+                }
+
+                $myBinaryWriter.Close();
+                $myFileStream.Close();
+                
+                if (-not (Test-Path -Path $DestinationFilePath) -or -not ($myFileStream)) {
+                    $myAnswer=$null;
+                } else {
+                    $myAnswer=$DestinationFilePath;
+                }
+                
+                # Closing & Disposing all objects
+                if ($myFileStream) {$myFileStream.Dispose()};
+            }
+            $myReader.Close();
+            return $myAnswer
+        }
+        catch
+        {       
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+            Throw;
+        }
+        finally
+        {
+            $mySqlCommand.Dispose();
+            $mySqlConnection.Close();
+            $mySqlConnection.Dispose();
+            #[System.Data.SqlClient.SqlConnection]::ClearAllPools();  
+        }
+        return $myAnswer;
+    }
 }
 Class Data {    # Data level common functions
     static [string]Clean_Parameters([string]$ParameterValue,[bool]$RemoveWildcard){  # Remove injection like characters
