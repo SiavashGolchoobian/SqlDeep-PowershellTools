@@ -216,9 +216,14 @@ Class DatabaseShipping {
     hidden [BackupFile[]]Database_GetBackupFileList([string]$ConnectionString,[string]$DatabaseName,[Decimal]$LatestLSN,[Decimal]$DiffBackupBaseLsn,[string]$KnownRecoveryFork) {    #Get List of backup files combination neede to restore
         $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [BackupFile[]]$myAnswer=$null
+        [string]$mySourceServerName=$null
+        [string]$myAcceptedStrategies=$null
+        [RestoreStrategy[]]$Strategies=$null
+        [string]$myBackupFileExistenceCheckCommand=$null
+        [string]$myRestoreTo=$null
+        [string]$myCommand=$null
 
         $this.LogWriter.Write($this.LogStaticMessage+"Get Source instance server name.",[LogType]::INF)
-        [string]$mySourceServerName=$null
         $mySourceServerName=$this.Database_GetServerName($ConnectionString)
         if ($null -eq $mySourceServerName) {
             $this.LogWriter.Write($this.LogStaticMessage+"Source server name is empty.",[LogType]::ERR)
@@ -227,8 +232,6 @@ Class DatabaseShipping {
 
         # Generate acceptable strategies list for TSQL
         $this.LogWriter.Write($this.LogStaticMessage+"Determine PreferredStrategies started.",[LogType]::INF)
-        [RestoreStrategy[]]$Strategies=$null
-        [string]$myAcceptedStrategies=$null
         if ($LatestLSN -eq 0 -and $DiffBackupBaseLsn -eq 0){    #In this case Diff and Log backups are not usable and we should use strategies containes Full backup files
             $Strategies = $this.PreferredStrategies | Where-Object -Property value__ -NotIn ( ([RestoreStrategy]::DiffLog).value__ , ([RestoreStrategy]::Log).value__ ) #Removing any non-full backup strategies from list
             if (!($Strategies -contains [RestoreStrategy]::FullDiffLog) -and !($this.PreferredStrategies -contains [RestoreStrategy]::FullLog)){    #Add all full backup strategies to the list, if there is not atleast one full backup strategy found in the list
@@ -246,7 +249,6 @@ Class DatabaseShipping {
 
         # Generate FileExistenceCheck command
         $this.LogWriter.Write($this.LogStaticMessage+"Determine File Existence Check according to SkipBackupFilesExistenceCheck started.",[LogType]::INF)
-        [string]$myBackupFileExistenceCheckCommand=$null
         if ($this.SkipBackupFilesExistenceCheck){
             $myBackupFileExistenceCheckCommand="CAST(1 AS BIT) AS IsFilesExists"
         }else{
@@ -254,12 +256,9 @@ Class DatabaseShipping {
         }
 
         # Generate RecoveryTime
-        [string]$myRestoreTo=$null
         $myRestoreTo=(Get-Date).ToString()
         if ($this.RestoreTo) {$myRestoreTo=($this.RestoreTo).ToString()}
 
-        # Generate BackupFileListQuery
-        [string]$myCommand=$null
         $myCommand = "
         USE [tempdb];
         DECLARE @myDBName AS NVARCHAR(255);
@@ -1537,8 +1536,10 @@ Class DatabaseShipping {
             $this.LogWriter.Write($this.LogStaticMessage+("ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished."), [LogType]::INF) 
             if ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -eq 0) {
                 $this.LogWriter.Write($this.LogStaticMessage+"Finished.",[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("ProceessInfo->SourceDB:" + $SourceDB + ",DestinationDB:" + $DestinationDB + ",LatestRestoredFile:" + $myBackupFileList[-1].FilePath + ",LatestRestoreFileTime:" + $myBackupFileList[-1].BackupStartTime.ToString()), [LogType]::INF) 
             }elseif ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -gt 0) {
                 $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
+                $this.LogWriter.Write($this.LogStaticMessage+("ProceessInfo->SourceDB:" + $SourceDB + ",DestinationDB:" + $DestinationDB + ",LatestRestoredFile:" + $myBackupFileList[-1].FilePath + ",LatestRestoreFileTime:" + $myBackupFileList[-1].BackupStartTime.ToString()), [LogType]::INF) 
             }else{
                 $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.ErrCount.ToString() + " Error(s) and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
             }
