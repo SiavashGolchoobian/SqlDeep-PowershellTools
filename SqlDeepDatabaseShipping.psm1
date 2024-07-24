@@ -1303,7 +1303,7 @@ Class DatabaseShipping {
         }
         if ($null -eq $DestinationPrefix){$DestinationPrefix=""}
         [string]$myCommand="
-            SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+")
+            SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+") ORDER BY [name]
             "
         try{
             $myRecord=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
@@ -1533,14 +1533,24 @@ Class DatabaseShipping {
             Write-Error ($_.ToString())
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         }finally{
+            [string]$myLastBackupFilePath=""
+            [string]$myLastBackupStartTime=""
             Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished. =====")
             $this.LogWriter.Write($this.LogStaticMessage+("ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished."), [LogType]::INF) 
+            if ($null -ne $myBackupFileList -and $myBackupFileList.Count -ne 0) {
+                    $myLastBackupFilePath=$myBackupFileList[-1].FilePath 
+                    $myLastBackupStartTime=$myBackupFileList[-1].BackupStartTime.ToString()
+                }
+
             if ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -eq 0) {
                 $this.LogWriter.Write($this.LogStaticMessage+"Finished.",[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("ProceessInfo->SourceDB:" + $SourceDB + ",DestinationDB:" + $DestinationDB + ",LatestRestoredFile:" + $myLastBackupFilePath + ",LatestRestoreFileTime:" + $myLastBackupStartTime), [LogType]::INF) 
             }elseif ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -gt 0) {
                 $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
+                $this.LogWriter.Write($this.LogStaticMessage+("ProceessInfo->SourceDB:" + $SourceDB + ",DestinationDB:" + $DestinationDB + ",LatestRestoredFile:" + $myLastBackupFilePath + ",LatestRestoreFileTime:" + $myLastBackupStartTime), [LogType]::INF) 
             }else{
                 $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.ErrCount.ToString() + " Error(s) and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
+                $this.LogWriter.Write($this.LogStaticMessage+("ProceessInfo->SourceDB:" + $SourceDB + ",DestinationDB:" + $DestinationDB + ",LatestRestoredFile:ERROR,LatestRestoreFileTime:ERROR"), [LogType]::INF) 
             }
             $this.LogWriter.Write($this.LogStaticMessage+"===== Shipping process finished. ===== ", [LogType]::INF) 
         }
