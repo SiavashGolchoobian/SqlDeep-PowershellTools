@@ -55,7 +55,6 @@ try{
 }
 Write-Output $myAnswer
 
-
 #Sample 4:  Query from database
 [string]$myConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;User=sa;Password=P@ssW0rd'
 $mySqlQueryResult=Read-SqlQuery -ConnectionString $myConnectionString -Query "SELECT database_id,name FROM sys.databases"
