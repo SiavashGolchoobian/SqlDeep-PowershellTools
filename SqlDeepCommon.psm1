@@ -193,7 +193,7 @@ function Invoke-SqlCommand {
         [bool]$myAnswer=$false;
         try
         {
-            $mySqlCommand.CommandText = $CommandText;                      
+            $mySqlCommand.CommandText = $Command;                      
             $mySqlCommand.ExecuteNonQuery();
             $myAnswer=$true;
         }
@@ -215,8 +215,8 @@ function Invoke-SqlCommand {
 function Test-DatabaseConnection {
     [OutputType([bool])]
     param (
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty][string]$ConnectionString,
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty][string]$DatabaseName
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$ConnectionString,
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$DatabaseName
     )
     begin {}
     process {
@@ -243,13 +243,13 @@ function Test-DatabaseConnection {
 function Test-InstanceConnection {
     [OutputType([bool])]
     param (
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty][string]$ConnectionString
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$ConnectionString
     )
     begin {}
     process {
         [bool]$myAnswer=$false;
         try{
-            $myAnswer=Test-DatabaseConnection -ConnectionString -DatabaseName 'master';
+            $myAnswer=Test-DatabaseConnection -ConnectionString $ConnectionString -DatabaseName 'master';
         }Catch{
             $myAnswer=$false;
             Write-Error($_.ToString());
@@ -310,7 +310,7 @@ function Get-InstanceInformationFromRegistery {
 function Get-InstanceInformationFromSql {
     [OutputType([PSCustomObject[]])]
     param (
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty][string]$ConnectionString
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$ConnectionString
     )
     begin {
         [string]$myCommand=$null;
@@ -381,7 +381,42 @@ function Get-InstanceInformationFromSql {
             [System.Collections.ArrayList]$myInstanceCollection=$null;
             $myInstanceCollection=[System.Collections.ArrayList]::new();
             $myResult=Read-SqlQuery -ConnectionString $ConnectionString -Query $myCommand
+            $myResult | Select-Object -Skip 1 | ForEach-Object{
+            $myInstanceObject=[PSCustomObject]@{
+                MachineName=$_.MachineName
+                DomainName=$_.DomainName
+                InstanceName=$_.InstanceName
+                InstanceRegName=$_.InstanceRegName
+                InstancePort=$_.InstancePort
+                ForceEncryption=$_.ForceEncryption
+                DefaultDataPath=$_.DefaultDataPath
+                DefaultLogPath=$_.DefaultLogPath
+                DefaultBackupPath=$_.DefaultBackupPath
+                Collation=$_.Collation
+                PatchLevel=$_.PatchLevel
+            }; $myInstanceCollection.Add($myInstanceObject)};
             $myAnswer=$myInstanceCollection.ToArray([PSCustomObject]);
+        }
+        catch
+        {
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+            throw;
+        }
+        return $myAnswer;
+    }
+    end {}
+}
+function Get-InstanceInformation {
+    [OutputType([PSCustomObject[]])]
+    param (
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][string]$ConnectionString
+    )
+    begin {}
+    process {
+        [PSCustomObject[]]$myAnswer=$null;
+        try {
+            if ($ConnectionString) {$myAnswer=Get-InstanceInformationFromSql -ConnectionString $ConnectionString} else {$myAnswer=Get-InstanceInformationFromRegistery}
         }
         catch
         {
