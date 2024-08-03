@@ -10,6 +10,7 @@ Using module .\SqlDeepCommon.psm1
 #Sample 3.1:  Download BLOB from database to a file
 [string]$myConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;User=sa;Password=P@ssW0rd'
 $mySqlQueryResult=Export-DatabaseBlob -ConnectionString $myConnectionString -CommandText "SELECT CAST('Hello World' AS VARBINARY(MAX)) AS BlobData" -DestinationFilePath "E:\Log\test.txt"
+$mySqlQueryResult
 
 #Sample 3.2:  Download multiple BLOB from database to a directory
 [hashtable]$myFileListQuery;    #This Hashtable should have filename as hashtable item key and BLOB retrive query as hastable item value
@@ -55,11 +56,11 @@ try{
 }
 Write-Output $myAnswer
 
-
 #Sample 4:  Query from database
 [string]$myConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;User=sa;Password=P@ssW0rd'
 $mySqlQueryResult=Read-SqlQuery -ConnectionString $myConnectionString -Query "SELECT database_id,name FROM sys.databases"
 $mySqlQueryResultUnionAll="SELECT database_id,name FROM sys.databases","select 1 as database_id,name from sys.all_objects" | ForEach-Object{Read-SqlQuery -ConnectionString $myConnectionString -Query $_}
+$mySqlQueryResultUnionAll
 
 #Sample 5:  Invoke Sql Command
 [string]$myConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;User=sa;Password=P@ssW0rd'
