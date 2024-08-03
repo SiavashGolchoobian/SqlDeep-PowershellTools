@@ -1,4 +1,5 @@
 Using module .\SqlDeepLogWriter.psm1
+Using module .\SqlDeepCommon.psm1
 Add-Type -Path "C:\Program Files (x86)\WinSCP\WinSCPnet.dll"
 enum DatabaseGroup {
     ALL_DATABASES
@@ -74,8 +75,8 @@ Class BackupFile {
 }
 Class BackupShipping {
     [string]$SourceInstanceConnectionString
-    [string]$DatabaseName
-    [BackupType]$BackupType
+    [string[]]$Databases
+    [BackupType[]]$BackupTypes
     [int]$HoursToScanForUntransferredBackups
     [DestinationType]$DestinationType
     [string]$Destination
@@ -152,21 +153,6 @@ hidden [bool]Create_ShippedBackupsLogTable() {   #Create Log Table to Write Logs
     }Catch{
         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         $myAnswer=[bool]$false
-    }
-    return $myAnswer
-}
-hidden [bool]Test_InstanceConnectivity([string]$ConnectionString,[string]$DatabaseName) {  #Test Instance connectivity
-    $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
-    [bool]$myAnswer=$false
-    [string]$myCommand="
-        USE [master];
-        SELECT TOP 1 1 AS Result FROM [master].[sys].[databases] WHERE name = '" + $DatabaseName + "';
-        "
-    try{
-        $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-        if ($null -ne $myRecord) {$myAnswer=$true} else {$myAnswer=$false}
-    }Catch{
-        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
     }
     return $myAnswer
 }
@@ -572,14 +558,16 @@ hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCr
         #--=======================Set constants
         [string]$mySourceInstanceName=$null
         [bool]$myDestinationIsAlive=$false
+        [InstanceObject]$mySourceInstanceInfo=$null
 
         #--=======================Check source instance connectivity
         $this.LogWriter.Write($this.LogStaticMessage+"Test Source Instance Connectivity of " + $this.SourceInstanceConnectionString, [LogType]::INF) 
-        if ($this.Test_InstanceConnectivity($this.SourceInstanceConnectionString,"msdb") -eq $false) {
+        if (Database.Test_DatabaseConnectivity($this.SourceInstanceConnectionString,"msdb") -eq $false) {
             $this.LogWriter.Write($this.LogStaticMessage+"Source Instance Connection failure.", [LogType]::ERR) 
             throw ($this.LogStaticMessage+"Source Instance Connection failure.")
         }
         $this.LogWriter.Write($this.LogStaticMessage+"Get Source Instance Name of " + $this.SourceInstanceConnectionString, [LogType]::INF) 
+        $mySourceInstanceInfo=Instance.Get_InstanceInfo()
         $mySourceInstanceName=$this.Get_DatabaseInstanceName($this.SourceInstanceConnectionString) 
         #--=======================Check shipped files log table sql instance connectivity
         $this.LogWriter.Write($this.LogStaticMessage+"Test shipped files log sql instance connectivity.", [LogType]::INF) 
@@ -613,10 +601,71 @@ hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCr
         }
         #--=======================Get files to transfer
         $this.LogWriter.Write($this.LogStaticMessage+"Get list of untransferred backup files from " + $this.SourceInstanceConnectionString + " with DatabasesToTransfer=" + $this.DatabasesToTransfer + ", ExceptedDatabasesForTransfer=" + $this.ExceptedDatabasesForTransfer + ", BackupTypeToTransfer=" + $this.BackupTypeToTransfer + ", HoursToScanForUntransferredBackups=" + $this.HoursToScanForUntransferredBackups + ", TransferedSuffix=" + $this.TransferedSuffix, [LogType]::INF) 
-        $myUntransferredBackups=SourceInstance.GetUntransferredBackups -SourceInstanceConnectionString $SourceInstanceConnectionString -DatabasesToTransfer $DatabasesToTransfer -ExceptedDatabasesForTransfer $ExceptedDatabasesForTransfer -BackupTypeToTransfer $BackupTypeToTransfer -HoursToScanForUntransferredBackups $HoursToScanForUntransferredBackups -TransferedSuffix $TransferedSuffix
+        $myUntransferredBackups=$this.Get_UntransferredBackups($this.SourceInstanceConnectionString,$this.Databases,$this.BackupTypes,$this.HoursToScanForUntransferredBackups,$this.TransferedSuffix)
         if ($null -eq $myUntransferredBackups) {
         Write-Log -Type INF -Content "There is no file(s) to transfer." -Terminate
         }
+        #--=======================Create folder structure in destination
+        $this.LogWriter.Write($this.LogStaticMessage+"Create folder structure on destination " + $this.Destination + " With path structure of " + $this.DestinationFolderStructure,[LogType]::INF)
+        $myPersianCalendar=New-Object system.globalization.persiancalendar
+        $myPersianDaysOfWeekMap=@{6="1";0="2";1="3";2="4";3="5";4="6";5="7"}
+        $myUnderZeroNumbers=@{}
+        1..31 | ForEach-Object {$myPrefix=IF ($_ -le 9) {"0"} else {""}; $myUnderZeroNumbers.Add($_,$myPrefix)}
+        $myUntransferredBackups | ForEach-Object {
+        $myDestinationFolder=$DestinationFolderStructure
+        $myBackupStartDate=$_.backup_start_date
+        $myJalaliMonth=$myPersianCalendar.GetMonth($myBackupStartDate)
+        $myJalaliDayOfMonth=$myPersianCalendar.GetDayOfMonth($myBackupStartDate)
+        $myJalaliDayOfWeek=$myPersianDaysOfWeekMap.Item($myBackupStartDate.DayOfWeek.value__)
+        
+        $myDestinationFolder=$myDestinationFolder.
+        Replace("{Year}",$myBackupStartDate.ToString("yyyy")).
+        Replace("{Month}",$myBackupStartDate.ToString("MM")).
+        Replace("{Day}",$myBackupStartDate.ToString("dd")).
+        Replace("{DayOfWeek}",([int]$myBackupStartDate.DayOfWeek).ToString()).
+        Replace("{JYear}",$myPersianCalendar.GetYear($myBackupStartDate).ToString()).
+        Replace("{JMonth}",$myUnderZeroNumbers.Item($myPersianCalendar.GetMonth($myBackupStartDate))+$myPersianCalendar.GetMonth($myBackupStartDate).ToString()).
+        Replace("{JDay}",$myUnderZeroNumbers.Item($myPersianCalendar.GetDayOfMonth($myBackupStartDate))+$myPersianCalendar.GetDayOfMonth($myBackupStartDate).ToString()).
+        Replace("{JDayOfWeek}",$myPersianDaysOfWeekMap.Item($myBackupStartDate.DayOfWeek.value__)).
+        Replace("{InstanceName}",$_.InstanceName.Replace("\","_")).
+        Replace("{DatabaseName}",$_.DatabaseName.Replace(" ","_"))
+        IF ($myDestinationFolder -like "*{CustomRule01}*") {
+            $myRuleTemplate="{CustomRule01}"
+            $myTemporalDestinationFolder=""
+            $myBackupType=$_.BackupType
+            #IF ($myBackupType -eq "L") {$myDestinationFolder=$myDestinationFolder.Replace($myRuleTemplate, "disk_only")} ELSE {$myDestinationFolder=$myDestinationFolder.Replace($myRuleTemplate, "tape_only")}
+            $myDestinationFolder=$myDestinationFolder.Replace($myRuleTemplate, "tape_only")
+        }
+        IF ($myDestinationFolder -like "*{CustomRule02}*") {
+            $myRuleTemplate="{CustomRule02}"
+            $myTemporalDestinationFolder=""
+            IF ($myJalaliMonth -eq 1 -and $myJalaliDayOfMonth -eq 1) {$myTemporalDestinationFolder+=$myDestinationFolder.Replace($myRuleTemplate, "yearly")+";"}
+            ELSEIF ($myJalaliDayOfMonth -eq 1) {$myTemporalDestinationFolder+=$myDestinationFolder.Replace($myRuleTemplate, "monthly")+";"}
+            ELSEIF ($myJalaliDayOfWeek -eq "1") {$myTemporalDestinationFolder+=$myDestinationFolder.Replace($myRuleTemplate, "weekly")+";"}
+            ELSE {$myTemporalDestinationFolder+=$myDestinationFolder.Replace($myRuleTemplate, "daily")}
+            IF ($myTemporalDestinationFolder.Length -gt 0) {$myDestinationFolder=$myTemporalDestinationFolder}
+        }
+        Add-Member -InputObject $_ -NotePropertyName "DestinationFolder" -NotePropertyValue $myDestinationFolder
+        }
+
+        #$myPathList = $myUntransferredBackups | Group-Object -Property DestinationFolder -NoElement | Select-Object -Property Name | ForEach-Object {$_.Name.Split(";")}
+        #--Split DestinationFolders with multiple values seperated by ";" to multiple rows
+        [System.Collections.ArrayList]$myPathList = @()
+        ForEach ($myPath IN ($myUntransferredBackups | Group-Object -Property DestinationFolder -NoElement | Select-Object -Property Name | ForEach-Object {$_.Name.Split(";")} )) {
+        $myItem = [pscustomobject]@{'FolderPath'=$myPath;'date'=(Get-Date)}
+        $myPathList.add($myItem) | Out-Null
+        $myItem=$null
+        }
+
+        switch ($DestinationType) 
+        {
+            "FTP"   {$myPathList | ForEach-Object {FtpByWinscp -Operation MKDIR -FtpServer $Destination -FtpCredential $DestinationCredential -WinscpPath $WinscpPath -FtpDestinationPath $_.FolderPath}}
+            "SFTP"  {$myPathList | ForEach-Object {SftpByWinscp -Operation MKDIR -SftpServer $Destination -SftpCredential $DestinationCredential -WinscpPath $WinscpPath -SftpDestinationPath $_.FolderPath -SftpSshKeyFingerprint $SshHostKeyFingerprint}}
+            "SCP"   {$myPathList | ForEach-Object {ScpByWinscp -Operation MKDIR -ScpServer $Destination -ScpCredential $DestinationCredential -WinscpPath $WinscpPath -ScpDestinationPath $_.FolderPath -ScpSshKeyFingerprint $SshHostKeyFingerprint}}
+            "UNC"   {$myPathList | ForEach-Object {UNC.MKDIR -UncSharedFolderPath $Destination -UncCredential $DestinationCredential -UncDestinationPath $_.FolderPath -TemporalDriveLetter "A"}}
+            "LOCAL" {$myPathList | ForEach-Object {UNC.MKDIR -UncSharedFolderPath $Destination -UncCredential $DestinationCredential -UncDestinationPath $_.FolderPath -TemporalDriveLetter "A"}}
+        }
+
     }
     catch {
         <#Do this if a terminating exception happens#>
