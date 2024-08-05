@@ -76,5 +76,5 @@ Test-InstanceConnection -ConnectionString $myConnectionString
 
 #Sample 8:  Get Instance Info
 [string]$myConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;User=sa;Password=P@ssW0rd'
-$mySqlQueryResult=Get-InstanceInformation -ConnectionString $myConnectionString
+$mySqlQueryResult=Get-InstanceInformation -ConnectionString $myConnectionString -ShowRelatedInstanceOnly
 $mySqlQueryResult=Get-InstanceInformation

@@ -150,7 +150,7 @@
                 [System.Data.DataTable]$myAnswer=$null;
                 $mySqlCommand.CommandText = $Query;                      
                 $mySqlDataAdapter.SelectCommand = $mySqlCommand;
-                $mySqlDataAdapter.Fill($myDataTable);
+                $null=$mySqlDataAdapter.Fill($myDataTable);
                 $myAnswer=$myDataTable;
             }
             catch
@@ -300,10 +300,13 @@
     function Get-InstanceInformationFromSql {
         [OutputType([PSCustomObject[]])]
         param (
-            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$ConnectionString
+            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$ConnectionString,
+            [Parameter(Mandatory=$false)][Switch]$ShowRelatedInstanceOnly
         )
         begin {
             [string]$myCommand=$null;
+            [string]$myShowRelatedInstanceCommand="";
+            if ($ShowRelatedInstanceOnly) {$myShowRelatedInstanceCommand=" WHERE [InstanceName]=@@ServiceName"}
             $myCommand="
                 DECLARE @myMachineName NVARCHAR(255)
                 DECLARE @myDomainName NVARCHAR(255)
@@ -322,7 +325,7 @@
 
                 SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
                 INSERT INTO #myInstance EXECUTE master.dbo.xp_regenumvalues 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter
-                DECLARE myCursor CURSOR FOR SELECT [InstanceName],[InstanceRegName] FROM [#myInstance]
+                DECLARE myCursor CURSOR FOR SELECT [InstanceName],[InstanceRegName] FROM [#myInstance] " + $myShowRelatedInstanceCommand + "
                 OPEN myCursor
                 FETCH NEXT FROM myCursor INTO @myInstanceName,@myInstanceRegName
                 WHILE @@FETCH_STATUS = 0
@@ -371,8 +374,8 @@
                 [System.Collections.ArrayList]$myInstanceCollection=$null;
                 $myInstanceCollection=[System.Collections.ArrayList]::new();
                 $myResult=Read-SqlQuery -ConnectionString $ConnectionString -Query $myCommand
-                $myResult | Select-Object -Skip 1 | ForEach-Object{
-                $myInstanceObject=[PSCustomObject]@{
+                $null=$myResult | ForEach-Object{
+                    $myInstanceObject=[PSCustomObject]@{
                     MachineName=$_.MachineName
                     DomainName=$_.DomainName
                     InstanceName=$_.InstanceName
@@ -383,9 +386,10 @@
                     DefaultLogPath=$_.DefaultLogPath
                     DefaultBackupPath=$_.DefaultBackupPath
                     Collation=$_.Collation
-                    PatchLevel=$_.PatchLevel
-                }; $myInstanceCollection.Add($myInstanceObject)};
-                $myAnswer=$myInstanceCollection.ToArray([PSCustomObject]);
+                    PatchLevel=$_.PatchLevel}; 
+                    $myInstanceCollection.Add($myInstanceObject);
+                };
+                $myAnswer=($myInstanceCollection.ToArray([PSCustomObject]))
             }
             catch
             {
@@ -400,13 +404,22 @@
     function Get-InstanceInformation {
         [OutputType([PSCustomObject[]])]
         param (
-            [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][string]$ConnectionString
+            [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][string]$ConnectionString,
+            [Parameter(Mandatory=$false)][Switch]$ShowRelatedInstanceOnly
         )
         begin {}
         process {
             [PSCustomObject[]]$myAnswer=$null;
             try {
-                if ($ConnectionString) {$myAnswer=Get-InstanceInformationFromSql -ConnectionString $ConnectionString} else {$myAnswer=Get-InstanceInformationFromRegistery}
+                if ($ConnectionString) {
+                    if ($ShowRelatedInstanceOnly){
+                        $myAnswer=Get-InstanceInformationFromSql -ConnectionString $ConnectionString -ShowRelatedInstanceOnly
+                    }else{
+                        $myAnswer=Get-InstanceInformationFromSql -ConnectionString $ConnectionString
+                    }
+                } else {
+                    $myAnswer=Get-InstanceInformationFromRegistery
+                }
             }
             catch
             {

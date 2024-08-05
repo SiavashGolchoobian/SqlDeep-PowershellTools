@@ -278,6 +278,17 @@ hidden [string]Get_DatabaseInstanceName([string]$ConnectionString) {  #Get datab
     }
     return $myAnswer
 }
+hidden [PSCustomObject]Get_InstanceInformation([string]$ConnectionString) {  #Get database server instance name
+    $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+    [string]$myAnswer=$null
+    try{
+        $myInstanceInfo=Get-InstanceInformation -ConnectionString $ConnectionString -ShowRelatedInstanceOnly
+        if ($null -ne $myInstanceInfo) {$myAnswer=$myInstanceInfo} else {$myAnswer=$null}
+    }Catch{
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+    }
+    return $myAnswer
+}
 hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[nullable[string]]$DestinationPath=$null,[nullable[string]]$SourceFilePath=$null) {  #Upload file to FTP path by winscp
     [bool]$myAnswer=$false
     [string]$mySshKeyFingerprint=$null
