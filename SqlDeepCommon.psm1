@@ -279,7 +279,12 @@
                         DefaultBackupPath=""
                         Collation=""
                         PatchLevel=""
-                    }; $myInstanceCollection.Add($myInstanceObject)};
+                    };
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name InstanceMajorVersion -Value {return [int]($this.PatchLevel.Split('.')[0])}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameInstanceName -Value {$myInstanceName="";if ($this.InstanceName -and $this.InstanceName.Trim().Length -gt 0) {$myInstanceName="\" + $this.InstanceName}; return $this.MachineName+$myInstanceName}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameDomainNameInstanceName -Value {$myInstanceName="";$myDomainName="";if ($this.InstanceName -and $this.InstanceName.Trim().Length -gt 0) {$myInstanceName="\" + $this.InstanceName};if ($this.DomainName -and $this.DomainName.Trim().Length -gt 0) {$myDomainName="." + $this.DomainName}; return $this.MachineName+$myDomainName+$myInstanceName}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameDomainNameInstanceNamePortNumber -Value {return $this.MachineNameDomainNameInstanceName+","+$this.InstancePort.Split(',')[0]}
+                     $myInstanceCollection.Add($myInstanceObject)};
                 #$myRegKey.psobject.Properties | Where-Object -Property Name -NotIn ("PSPath","PSParentPath","SQL","PSChildName","PSDRIVE","PSProvider") | ForEach-Object{Write-Host ($myMachineName+","+$myDomainName+","+$_.Name+","+$_.Value);$myInstanceCollection.Add([InstanceObject]::New($myMachineName,$myDomainName,$_.Name,$_.Value,'1433',$false,"","","","",""))};
                 $myInstanceCollection | ForEach-Object{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$_.InstanceRegName+'\MSSQLServer\SuperSocketNetLib\Tcp\IPAll';$_.InstancePort=(Get-ItemProperty -Path $myRegInstanceFilter).TcpPort};
                 $myInstanceCollection | ForEach-Object{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$_.InstanceRegName+'\MSSQLServer\SuperSocketNetLib';$_.ForceEncryption=(Get-ItemProperty -Path $myRegInstanceFilter).ForceEncryption};
@@ -387,6 +392,10 @@
                     DefaultBackupPath=$_.DefaultBackupPath
                     Collation=$_.Collation
                     PatchLevel=$_.PatchLevel}; 
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name InstanceMajorVersion -Value {return [int]($this.PatchLevel.Split('.')[0])}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameInstanceName -Value {$myInstanceName="";if ($this.InstanceName -and $this.InstanceName.Trim().Length -gt 0) {$myInstanceName="\" + $this.InstanceName}; return $this.MachineName+$myInstanceName}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameDomainNameInstanceName -Value {$myInstanceName="";$myDomainName="";if ($this.InstanceName -and $this.InstanceName.Trim().Length -gt 0) {$myInstanceName="\" + $this.InstanceName};if ($this.DomainName -and $this.DomainName.Trim().Length -gt 0) {$myDomainName="." + $this.DomainName}; return $this.MachineName+$myDomainName+$myInstanceName}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameDomainNameInstanceNamePortNumber -Value {return $this.MachineNameDomainNameInstanceName+","+$this.InstancePort.Split(',')[0]}
                     $myInstanceCollection.Add($myInstanceObject);
                 };
                 $myAnswer=($myInstanceCollection.ToArray([PSCustomObject]))
