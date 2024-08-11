@@ -1,4 +1,15 @@
 #region Functions
+    function IsNumeric {  #Check if input value is numeric
+        [OutputType([bool])]
+        param (
+            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input value to evaluate")][AllowNull()]$Value
+        )
+        begin{}
+        process{
+            return $Value -match "^[\d\.]+$"
+        }
+        end{}
+    }
     function Clear-Text {
         [OutputType([string])]
         param (
@@ -26,14 +37,22 @@
         [OutputType([string])]
         param (
             [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage='Input string to cleanup')][AllowEmptyString()][AllowNull()][string]$ParameterValue,
+            [Parameter(Mandatory=$false,HelpMessage='Remove space( ) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveSpace,
             [Parameter(Mandatory=$false,HelpMessage='Remove wildecard(%) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveWildcard,
-            [Parameter(Mandatory=$false,HelpMessage='Remove braces([]) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveBraces
+            [Parameter(Mandatory=$false,HelpMessage='Remove braces([]) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveBraces,
+            [Parameter(Mandatory=$false,HelpMessage='Remove single quote character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveSingleQuote,
+            [Parameter(Mandatory=$false,HelpMessage='Remove double quote(") character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveDoubleQuote,
+            [Parameter(Mandatory=$false,HelpMessage='Remove doller sign ($) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveDollerSign
             )
         begin {
             [string[]]$myProhibitedPhrases=$null;
             $myProhibitedPhrases+=';';
+            if ($RemoveSpace){$myProhibitedPhrases+=' '};
             if ($RemoveWildcard){$myProhibitedPhrases+='%'};
             if ($RemoveBraces){$myProhibitedPhrases+='[',']','{','}'};
+            if ($RemoveSingleQuote){$myProhibitedPhrases+="'"};
+            if ($RemoveDoubleQuote){$myProhibitedPhrases+='"'};
+            if ($RemoveDollerSign){$myProhibitedPhrases+='$'};
         } 
         process {
             [string]$myAnswer=$null;
