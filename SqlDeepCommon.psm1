@@ -1,4 +1,15 @@
 #region Functions
+    function IsNumeric {  #Check if input value is numeric
+        [OutputType([bool])]
+        param (
+            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input value to evaluate")][AllowNull()]$Value
+        )
+        begin{}
+        process{
+            return $Value -match "^[\d\.]+$"
+        }
+        end{}
+    }
     function Clear-Text {
         [OutputType([string])]
         param (
@@ -26,14 +37,22 @@
         [OutputType([string])]
         param (
             [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage='Input string to cleanup')][AllowEmptyString()][AllowNull()][string]$ParameterValue,
+            [Parameter(Mandatory=$false,HelpMessage='Remove space( ) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveSpace,
             [Parameter(Mandatory=$false,HelpMessage='Remove wildecard(%) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveWildcard,
-            [Parameter(Mandatory=$false,HelpMessage='Remove braces([]) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveBraces
+            [Parameter(Mandatory=$false,HelpMessage='Remove braces([]) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveBraces,
+            [Parameter(Mandatory=$false,HelpMessage='Remove single quote character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveSingleQuote,
+            [Parameter(Mandatory=$false,HelpMessage='Remove double quote(") character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveDoubleQuote,
+            [Parameter(Mandatory=$false,HelpMessage='Remove doller sign ($) character')][AllowEmptyCollection()][AllowNull()][switch]$RemoveDollerSign
             )
         begin {
             [string[]]$myProhibitedPhrases=$null;
             $myProhibitedPhrases+=';';
+            if ($RemoveSpace){$myProhibitedPhrases+=' '};
             if ($RemoveWildcard){$myProhibitedPhrases+='%'};
             if ($RemoveBraces){$myProhibitedPhrases+='[',']','{','}'};
+            if ($RemoveSingleQuote){$myProhibitedPhrases+="'"};
+            if ($RemoveDoubleQuote){$myProhibitedPhrases+='"'};
+            if ($RemoveDollerSign){$myProhibitedPhrases+='$'};
         } 
         process {
             [string]$myAnswer=$null;
@@ -279,7 +298,12 @@
                         DefaultBackupPath=""
                         Collation=""
                         PatchLevel=""
-                    }; $myInstanceCollection.Add($myInstanceObject)};
+                    };
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name InstanceMajorVersion -Value {return [int]($this.PatchLevel.Split('.')[0])}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameInstanceName -Value {$myInstanceName="";if ($this.InstanceName -and $this.InstanceName.Trim().Length -gt 0) {$myInstanceName="\" + $this.InstanceName}; return $this.MachineName+$myInstanceName}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameDomainNameInstanceName -Value {$myInstanceName="";$myDomainName="";if ($this.InstanceName -and $this.InstanceName.Trim().Length -gt 0) {$myInstanceName="\" + $this.InstanceName};if ($this.DomainName -and $this.DomainName.Trim().Length -gt 0) {$myDomainName="." + $this.DomainName}; return $this.MachineName+$myDomainName+$myInstanceName}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameDomainNameInstanceNamePortNumber -Value {return $this.MachineNameDomainNameInstanceName+","+$this.InstancePort.Split(',')[0]}
+                     $myInstanceCollection.Add($myInstanceObject)};
                 #$myRegKey.psobject.Properties | Where-Object -Property Name -NotIn ("PSPath","PSParentPath","SQL","PSChildName","PSDRIVE","PSProvider") | ForEach-Object{Write-Host ($myMachineName+","+$myDomainName+","+$_.Name+","+$_.Value);$myInstanceCollection.Add([InstanceObject]::New($myMachineName,$myDomainName,$_.Name,$_.Value,'1433',$false,"","","","",""))};
                 $myInstanceCollection | ForEach-Object{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$_.InstanceRegName+'\MSSQLServer\SuperSocketNetLib\Tcp\IPAll';$_.InstancePort=(Get-ItemProperty -Path $myRegInstanceFilter).TcpPort};
                 $myInstanceCollection | ForEach-Object{$myRegInstanceFilter='HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\'+$_.InstanceRegName+'\MSSQLServer\SuperSocketNetLib';$_.ForceEncryption=(Get-ItemProperty -Path $myRegInstanceFilter).ForceEncryption};
@@ -387,6 +411,10 @@
                     DefaultBackupPath=$_.DefaultBackupPath
                     Collation=$_.Collation
                     PatchLevel=$_.PatchLevel}; 
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name InstanceMajorVersion -Value {return [int]($this.PatchLevel.Split('.')[0])}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameInstanceName -Value {$myInstanceName="";if ($this.InstanceName -and $this.InstanceName.Trim().Length -gt 0) {$myInstanceName="\" + $this.InstanceName}; return $this.MachineName+$myInstanceName}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameDomainNameInstanceName -Value {$myInstanceName="";$myDomainName="";if ($this.InstanceName -and $this.InstanceName.Trim().Length -gt 0) {$myInstanceName="\" + $this.InstanceName};if ($this.DomainName -and $this.DomainName.Trim().Length -gt 0) {$myDomainName="." + $this.DomainName}; return $this.MachineName+$myDomainName+$myInstanceName}
+                    Add-Member -InputObject $myInstanceObject -MemberType ScriptProperty -Name MachineNameDomainNameInstanceNamePortNumber -Value {return $this.MachineNameDomainNameInstanceName+","+$this.InstancePort.Split(',')[0]}
                     $myInstanceCollection.Add($myInstanceObject);
                 };
                 $myAnswer=($myInstanceCollection.ToArray([PSCustomObject]))
