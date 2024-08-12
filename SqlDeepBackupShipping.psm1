@@ -691,11 +691,13 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
     [string]$myDestinationUser=$null
     [string]$myDestinationPassword=$null
     [hashtable]$mySessionArguments=$null
+    <#This block was commented because WinScp module does not required in all cases and these definisions generate error in case of non winscp scenarios
     [WinSCP.SessionOptions]$mySessionOptions=$null
     [WinSCP.Session]$mySession=$null
     [WinSCP.TransferOptions]$myTransferOptions=$null
     [WinSCP.TransferOperationResult]$myOperationResult=$null
     [WinSCP.RemoteDirectoryInfo]$myDirResult=$null
+    #>
 
     $myDestinationPath = $DestinationPath.Replace('//','/')
     $myDestinationPassword = $Credential.Password
