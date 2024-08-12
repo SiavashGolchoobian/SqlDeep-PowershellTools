@@ -620,7 +620,7 @@ hidden [PSCustomObject]Get_InstanceInformation([string]$ConnectionString) {  #Ge
     }
     return $myAnswer
 }
-hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath=$null,[string]$SourceFilePath=$null) {  #Upload file to FTP path by winscp
+hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath) {  #Upload file to FTP path by winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
     [string]$mySshKeyFingerprint=$null
@@ -628,23 +628,25 @@ hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.N
     $myAnswer=$this.Operate_OverWinScp([DestinationType]::FTP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$mySshKeyFingerprint)
     return $myAnswer
 }
-hidden [bool]Operate_OverSftp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath=$null,[string]$SourceFilePath=$null,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
+hidden [bool]Operate_OverSftp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
 
     $myAnswer=$this.Operate_OverWinScp([DestinationType]::SFTP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$SshKeyFingerprint)
     return $myAnswer
 }
-hidden [bool]Operate_OverScp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath=$null,[string]$SourceFilePath=$null,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
+hidden [bool]Operate_OverScp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
 
     $myAnswer=$this.Operate_OverWinScp([DestinationType]::SCP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$SshKeyFingerprint)
     return $myAnswer
 }
-hidden [bool]Operate_OverUnc([HostOperation]$Operation,[string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char[]]$TemporalDriveLetters=('A','B'),[string]$DestinationPath=$null,[string]$SourceFilePath=$null) {
+hidden [bool]Operate_OverUnc([HostOperation]$Operation,[string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char[]]$TemporalDriveLetters,[string]$DestinationPath,[string]$SourceFilePath) {
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
+
+    if($null -eq $TemporalDriveLetters){$TemporalDriveLetters=('A','B')}
 
     if($Operation -eq [HostOperation]::ISALIVE)
     {
@@ -682,7 +684,7 @@ hidden [bool]Operate_OverUnc([HostOperation]$Operation,[string]$SharedFolderPath
     }
     return $myAnswer
 }
-hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath=$null,[string]$SourceFilePath=$null,[string]$SshKeyFingerprint=$null) {  #Do file operation to via winscp
+hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath,[string]$SshKeyFingerprint) {  #Do file operation to via winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
     [string]$myDestinationPath=$null
@@ -879,7 +881,7 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
  
     return $myAnswer
 }
-hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char]$TemporalDriveLetter='A') {  #Check UNC path is alive
+hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char]$TemporalDriveLetter) {  #Check UNC path is alive
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
     [bool]$myAnswer=$false
     [string]$myDestinationUser=$null
@@ -898,6 +900,7 @@ hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCr
         }
         $myDestinationSecurePassword = ConvertTo-SecureString $myDestinationPassword -AsPlainText -Force
         $myCredential = New-Object System.Management.Automation.PSCredential ($myDestinationUser, $myDestinationSecurePassword)
+        if($null -eq $TemporalDriveLetter){$TemporalDriveLetter='A'}
         $this.LogWriter.Write($this.LogStaticMessage+'Try to create Drive Letter of ' + $TemporalDriveLetter + ' on ' + $SharedFolderPath + ' with User ' + $myDestinationUser, [LogType]::INF)    
         New-PSDrive -Name $TemporalDriveLetter -PSProvider filesystem -Root $SharedFolderPath -Credential $myCredential
 
@@ -922,7 +925,7 @@ hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCr
     }
     return $myAnswer
 }
-hidden [bool]Operate_UNC_MKDIR([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char]$TemporalDriveLetter='A',[string]$DestinationPath) {  #Create Directory on UNC path 
+hidden [bool]Operate_UNC_MKDIR([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char]$TemporalDriveLetter,[string]$DestinationPath) {  #Create Directory on UNC path 
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
     [bool]$myAnswer=$false
     [string]$myDestinationUser=$null
@@ -942,6 +945,7 @@ hidden [bool]Operate_UNC_MKDIR([string]$SharedFolderPath,[System.Net.NetworkCred
         }
         $myDestinationSecurePassword = ConvertTo-SecureString $myDestinationPassword -AsPlainText -Force
         $myCredential = New-Object System.Management.Automation.PSCredential ($myDestinationUser, $myDestinationSecurePassword)
+        if($null -eq $TemporalDriveLetter){$TemporalDriveLetter='A'}
         $this.LogWriter.Write($this.LogStaticMessage+'Try to create drive letter named ' + $TemporalDriveLetter + ' for ' + $SharedFolderPath + ' with User ' + $myDestinationUser, [LogType]::INF)    
         New-PSDrive -Name $TemporalDriveLetter -PSProvider filesystem -Root $SharedFolderPath -Credential $myCredential
         # Create the directory and throw on any error
@@ -974,7 +978,7 @@ hidden [bool]Operate_UNC_MKDIR([string]$SharedFolderPath,[System.Net.NetworkCred
     }
     return $myAnswer
 }
-hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char[]]$TemporalDriveLetters=('A','B'),[string]$DestinationPath=$null,[string]$SourceFilePath=$null,[ActionType]$ActionType) {
+hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char[]]$TemporalDriveLetters,[string]$DestinationPath,[string]$SourceFilePath,[ActionType]$ActionType) {
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
     [bool]$myAnswer=$false
     [string]$myDestinationUser=$null
@@ -995,6 +999,7 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
         $myCredential = New-Object System.Management.Automation.PSCredential ($myDestinationUser, $myDestinationSecurePassword)
          
         # Recalculate unc destination path
+        if($null -eq $TemporalDriveLetters){$TemporalDriveLetters=('A','B')}
         $myDestinationDriveLetter = $TemporalDriveLetters[0]
         $myDestinationPath=($myDestinationDriveLetter + ':\' + $DestinationPath).Replace('\\','\')
         $this.LogWriter.Write($this.LogStaticMessage+'Try to create Drive Letter of ' + $myDestinationDriveLetter + ' on ' + $SharedFolderPath + ' with User ' + $myDestinationUser, [LogType]::INF)    
