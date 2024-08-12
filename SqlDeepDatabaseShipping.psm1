@@ -90,6 +90,9 @@ Class DatabaseShipping {
     hidden [LogWriter]$LogWriter
     hidden [string]$LogStaticMessage=""
 
+    DatabaseShipping(){
+
+    }
     DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[LogWriter]$LogWriter){
         $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,(31*24),$true,[DatabaseRecoveryMode]::RESTOREONLY,$LogWriter)
     }
@@ -99,10 +102,10 @@ Class DatabaseShipping {
     hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentHours,[bool]$RestoreFilesToIndividualFolders,[DatabaseRecoveryMode]$DestinationRestoreMode,[LogWriter]$LogWriter){
         $this.SourceInstanceConnectionString=$SourceInstanceConnectionString
         $this.DestinationInstanceConnectionString=$DestinationInstanceConnectionString
-        $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($FileRepositoryUncPath)
         $this.LimitMsdbScanToRecentHours=$LimitMsdbScanToRecentHours
         $this.RestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
         $this.DestinationRestoreMode=$DestinationRestoreMode
+        $this.FileRepositoryUncPath=$FileRepositoryUncPath
         $this.LogWriter=$LogWriter
     }
 #region Functions
@@ -1352,6 +1355,7 @@ Class DatabaseShipping {
             [string]$myCurrentMachineName=([Environment]::MachineName).ToUpper()
             [string]$mySourceBackupMachineName=$null
             [string]$mySourceBackupFilePath=$null
+            $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($this.FileRepositoryUncPath)
 
             #--=======================Validate input parameters
             if ($SourceDB.Trim().Length -eq 0) {
