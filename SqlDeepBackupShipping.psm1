@@ -204,6 +204,9 @@ Class BackupShipping {
     hidden [string]$BatchUid;
     hidden [string]$LogStaticMessage='';
 
+    BackupShipping(){
+
+    }
     BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[LogWriter]$LogWriter){
         [BackupType[]]$myBackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG);
         [ActionType]$myActionType=[ActionType]::COPY;
@@ -248,7 +251,7 @@ Class BackupShipping {
     BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG),[int]$HoursToScanForUntransferredBackups=72,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[nullable[string]]$SshHostKeyFingerprint,[ActionType]$ActionType=[ActionType]::COPY,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix='Transfered',[string]$BackupShippingCatalogTableName,[nullable[string]]$WinScpPath=$null,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
         $this.Init($SourceInstanceConnectionString,$Databases,$BackupTypes,$HoursToScanForUntransferredBackups,$DestinationType,$Destination,$DestinationFolderStructure,$SshHostKeyFingerprint,$ActionType,$RetainDaysOnDestination,$TransferedFileDescriptionSuffix,$BackupShippingCatalogTableName,$WinScpPath,$DestinationCredential,$LogWriter)
     }
-    Init([string]$SourceInstanceConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG),[int]$HoursToScanForUntransferredBackups=72,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[nullable[string]]$SshHostKeyFingerprint,[ActionType]$ActionType=[ActionType]::COPY,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix='Transfered',[string]$BackupShippingCatalogTableName,[nullable[string]]$WinScpPath=$null,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
+    hidden Init([string]$SourceInstanceConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG),[int]$HoursToScanForUntransferredBackups=72,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[nullable[string]]$SshHostKeyFingerprint,[ActionType]$ActionType=[ActionType]::COPY,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix='Transfered',[string]$BackupShippingCatalogTableName,[nullable[string]]$WinScpPath=$null,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
         try
         {
             $this.SourceInstanceConnectionString=$SourceInstanceConnectionString;
@@ -1181,6 +1184,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         $this.BatchUid=(New-Guid).ToString()
         $this.LogStaticMessage= ''
         $this.LogWriter.Write($this.LogStaticMessage+'BackupShipping started.', [LogType]::INF) 
+        
         #--=======================Set constants
         [bool]$myDestinationIsAlive=$false
         [BackupFile[]]$myUntransferredBackups=$null
@@ -1190,6 +1194,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         $this.TransferedFileDescriptionSuffix=Clear-SqlParameter -ParameterValue ($this.TransferedFileDescriptionSuffix) -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign  #Clear TransferedFileDescriptionSuffix value
         $this.DestinationFolderStructure=(Clear-SqlParameter -ParameterValue $this.DestinationFolderStructure -RemoveWildcard -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign).Replace('\\','')
         if ($this.DestinationFolderStructure[0] -eq '\') {$this.DestinationFolderStructure.Remove(0,1)}
+
         #--=======================Check and load assemblies
         $this.LogWriter.Write($this.LogStaticMessage+'Check and load assemblies.', [LogType]::INF) 
         if ($this.DestinationType -in ([DestinationType]::FTP,[DestinationType]::SFTP,[DestinationType]::SCP)) {
@@ -1365,6 +1370,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
 }
 #endregion
 }
+
 #region Functions
 Function New-BackupShipping {
     Param(
