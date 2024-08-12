@@ -208,50 +208,50 @@ Class BackupShipping {
 
     }
     BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[LogWriter]$LogWriter){
-        [BackupType[]]$myBackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG);
-        [ActionType]$myActionType=[ActionType]::COPY;
-        [string]$myTransferedFileDescriptionSuffix='Transfered';
-        [string]$myBackupShippingCatalogTableName='TransferredFiles';
-        [string]$myWinScpPath='C:\Program Files (x86)\WinSCP\WinSCPnet.dll';
+        [BackupType[]]$myBackupTypes=$null;
+        [ActionType]$myActionType=$null;
+        [string]$myTransferedFileDescriptionSuffix=$null;
+        [string]$myBackupShippingCatalogTableName==$null;
+        [string]$myWinScpPath=$null;
         [System.Net.NetworkCredential]$myDestinationCredential=$null;
-        [int]$myHoursToScanForUntransferredBackups=72;
-        [string]$myRetainDaysOnDestination='7';
+        [int]$myHoursToScanForUntransferredBackups=$null;
+        [string]$myRetainDaysOnDestination=$null;
         [string]$mySshHostKeyFingerprint=$null;
 
         $this.Init($SourceInstanceConnectionString,$Databases,$myBackupTypes,$myHoursToScanForUntransferredBackups,$DestinationType,$Destination,$DestinationFolderStructure,$mySshHostKeyFingerprint,$myActionType,$myRetainDaysOnDestination,$myTransferedFileDescriptionSuffix,$myBackupShippingCatalogTableName,$myWinScpPath,$myDestinationCredential,$LogWriter)
     }
-    BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[nullable[string]]$SshHostKeyFingerprint,[LogWriter]$LogWriter){
-        [BackupType[]]$myBackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG);
-        [ActionType]$myActionType=[ActionType]::COPY;
-        [string]$myTransferedFileDescriptionSuffix='Transfered';
-        [string]$myBackupShippingCatalogTableName='TransferredFiles';
-        [string]$myWinScpPath='C:\Program Files (x86)\WinSCP\WinSCPnet.dll';
+    BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[string]$SshHostKeyFingerprint,[LogWriter]$LogWriter){
+        [BackupType[]]$myBackupTypes=$null;
+        [ActionType]$myActionType=$null;
+        [string]$myTransferedFileDescriptionSuffix=$null;
+        [string]$myBackupShippingCatalogTableName=$null;
+        [string]$myWinScpPath=$null;
         [System.Net.NetworkCredential]$myDestinationCredential=$null;
-        [int]$myHoursToScanForUntransferredBackups=72;
-        [string]$myRetainDaysOnDestination='7';
+        [int]$myHoursToScanForUntransferredBackups=$null;
+        [string]$myRetainDaysOnDestination=$null;
 
         $this.Init($SourceInstanceConnectionString,$Databases,$myBackupTypes,$myHoursToScanForUntransferredBackups,$DestinationType,$Destination,$DestinationFolderStructure,$SshHostKeyFingerprint,$myActionType,$myRetainDaysOnDestination,$myTransferedFileDescriptionSuffix,$myBackupShippingCatalogTableName,$myWinScpPath,$myDestinationCredential,$LogWriter)
     }
-    BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[int]$HoursToScanForUntransferredBackups=72,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[nullable[string]]$SshHostKeyFingerprint,[string]$RetainDaysOnDestination,[LogWriter]$LogWriter){
-        [BackupType[]]$myBackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG);
-        [ActionType]$myActionType=[ActionType]::COPY;
-        [string]$myTransferedFileDescriptionSuffix='Transfered';
-        [string]$myBackupShippingCatalogTableName='TransferredFiles';
-        [string]$myWinScpPath='C:\Program Files (x86)\WinSCP\WinSCPnet.dll';
+    BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[int]$HoursToScanForUntransferredBackups,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[string]$SshHostKeyFingerprint,[string]$RetainDaysOnDestination,[LogWriter]$LogWriter){
+        [BackupType[]]$myBackupTypes=$null;
+        [ActionType]$myActionType=$null;
+        [string]$myTransferedFileDescriptionSuffix=$null;
+        [string]$myBackupShippingCatalogTableName=$null;
+        [string]$myWinScpPath=$null;
         [System.Net.NetworkCredential]$myDestinationCredential=$null;
 
         $this.Init($SourceInstanceConnectionString,$Databases,$myBackupTypes,$HoursToScanForUntransferredBackups,$DestinationType,$Destination,$DestinationFolderStructure,$SshHostKeyFingerprint,$myActionType,$RetainDaysOnDestination,$myTransferedFileDescriptionSuffix,$myBackupShippingCatalogTableName,$myWinScpPath,$myDestinationCredential,$LogWriter)
     }
-    BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[int]$HoursToScanForUntransferredBackups=72,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[nullable[string]]$SshHostKeyFingerprint,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix='Transfered',[string]$BackupShippingCatalogTableName,[nullable[string]]$WinScpPath=$null,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
-        [BackupType[]]$myBackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG);
-        [ActionType]$myActionType=[ActionType]::COPY;
+    BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[int]$HoursToScanForUntransferredBackups,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[string]$SshHostKeyFingerprint,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix,[string]$BackupShippingCatalogTableName,[string]$WinScpPath=$null,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
+        [BackupType[]]$myBackupTypes=$null;
+        [ActionType]$myActionType=$null;
 
         $this.Init($SourceInstanceConnectionString,$Databases,$myBackupTypes,$HoursToScanForUntransferredBackups,$DestinationType,$Destination,$DestinationFolderStructure,$SshHostKeyFingerprint,$myActionType,$RetainDaysOnDestination,$TransferedFileDescriptionSuffix,$BackupShippingCatalogTableName,$WinScpPath,$DestinationCredential,$LogWriter)
     }
-    BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG),[int]$HoursToScanForUntransferredBackups=72,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[nullable[string]]$SshHostKeyFingerprint,[ActionType]$ActionType=[ActionType]::COPY,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix='Transfered',[string]$BackupShippingCatalogTableName,[nullable[string]]$WinScpPath=$null,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
+    BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes,[int]$HoursToScanForUntransferredBackups,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[string]$SshHostKeyFingerprint,[ActionType]$ActionType,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix,[string]$BackupShippingCatalogTableName,[string]$WinScpPath,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
         $this.Init($SourceInstanceConnectionString,$Databases,$BackupTypes,$HoursToScanForUntransferredBackups,$DestinationType,$Destination,$DestinationFolderStructure,$SshHostKeyFingerprint,$ActionType,$RetainDaysOnDestination,$TransferedFileDescriptionSuffix,$BackupShippingCatalogTableName,$WinScpPath,$DestinationCredential,$LogWriter)
     }
-    hidden Init([string]$SourceInstanceConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG),[int]$HoursToScanForUntransferredBackups=72,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[nullable[string]]$SshHostKeyFingerprint,[ActionType]$ActionType=[ActionType]::COPY,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix='Transfered',[string]$BackupShippingCatalogTableName,[nullable[string]]$WinScpPath=$null,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
+    hidden Init([string]$SourceInstanceConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes,[int]$HoursToScanForUntransferredBackups,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[string]$SshHostKeyFingerprint,[ActionType]$ActionType,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix,[string]$BackupShippingCatalogTableName,[string]$WinScpPath,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
         try
         {
             $this.SourceInstanceConnectionString=$SourceInstanceConnectionString;
@@ -269,6 +269,15 @@ Class BackupShipping {
             $this.WinScpPath=$WinScpPath;
             $this.DestinationCredential=$DestinationCredential;
             $this.LogWriter=$LogWriter;
+
+            if($null -eq $this.BackupTypes){$this.BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG)};
+            if($null -eq $this.HoursToScanForUntransferredBackups){$this.HoursToScanForUntransferredBackups=72};
+            if($null -eq $this.ActionType){$this.ActionType=[ActionType]::COPY};
+            if($null -eq $this.TransferedFileDescriptionSuffix){$this.TransferedFileDescriptionSuffix='Transfered'};
+            if($null -eq $this.WinScpPath){$this.WinScpPath='C:\Program Files (x86)\WinSCP\WinSCPnet.dll'};
+            if($null -eq $this.RetainDaysOnDestination){$this.RetainDaysOnDestination='7'};
+            if($null -eq $this.BackupShippingCatalogTableName){$this.BackupShippingCatalogTableName='TransferredFiles'}
+
         }catch{
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
             throw ('Initialization failed.')
@@ -611,7 +620,7 @@ hidden [PSCustomObject]Get_InstanceInformation([string]$ConnectionString) {  #Ge
     }
     return $myAnswer
 }
-hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[nullable[string]]$DestinationPath=$null,[nullable[string]]$SourceFilePath=$null) {  #Upload file to FTP path by winscp
+hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath=$null,[string]$SourceFilePath=$null) {  #Upload file to FTP path by winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
     [string]$mySshKeyFingerprint=$null
@@ -619,21 +628,21 @@ hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.N
     $myAnswer=$this.Operate_OverWinScp([DestinationType]::FTP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$mySshKeyFingerprint)
     return $myAnswer
 }
-hidden [bool]Operate_OverSftp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[nullable[string]]$DestinationPath=$null,[nullable[string]]$SourceFilePath=$null,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
+hidden [bool]Operate_OverSftp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath=$null,[string]$SourceFilePath=$null,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
 
     $myAnswer=$this.Operate_OverWinScp([DestinationType]::SFTP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$SshKeyFingerprint)
     return $myAnswer
 }
-hidden [bool]Operate_OverScp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[nullable[string]]$DestinationPath=$null,[nullable[string]]$SourceFilePath=$null,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
+hidden [bool]Operate_OverScp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath=$null,[string]$SourceFilePath=$null,[string]$SshKeyFingerprint) {  #Upload file to SFTP path by winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
 
     $myAnswer=$this.Operate_OverWinScp([DestinationType]::SCP,$Operation,$Server,$Credential,$DestinationPath,$SourceFilePath,$SshKeyFingerprint)
     return $myAnswer
 }
-hidden [bool]Operate_OverUnc([HostOperation]$Operation,[string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char[]]$TemporalDriveLetters=('A','B'),[nullable[string]]$DestinationPath=$null,[nullable[string]]$SourceFilePath=$null) {
+hidden [bool]Operate_OverUnc([HostOperation]$Operation,[string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char[]]$TemporalDriveLetters=('A','B'),[string]$DestinationPath=$null,[string]$SourceFilePath=$null) {
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
 
@@ -673,7 +682,7 @@ hidden [bool]Operate_OverUnc([HostOperation]$Operation,[string]$SharedFolderPath
     }
     return $myAnswer
 }
-hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[nullable[string]]$DestinationPath=$null,[nullable[string]]$SourceFilePath=$null,[nullable[string]]$SshKeyFingerprint=$null) {  #Do file operation to via winscp
+hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath=$null,[string]$SourceFilePath=$null,[string]$SshKeyFingerprint=$null) {  #Do file operation to via winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
     [string]$myDestinationPath=$null
@@ -965,7 +974,7 @@ hidden [bool]Operate_UNC_MKDIR([string]$SharedFolderPath,[System.Net.NetworkCred
     }
     return $myAnswer
 }
-hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char[]]$TemporalDriveLetters=('A','B'),[nullable[string]]$DestinationPath=$null,[nullable[string]]$SourceFilePath=$null,[ActionType]$ActionType) {
+hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char[]]$TemporalDriveLetters=('A','B'),[string]$DestinationPath=$null,[string]$SourceFilePath=$null,[ActionType]$ActionType) {
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
     [bool]$myAnswer=$false
     [string]$myDestinationUser=$null
@@ -1398,12 +1407,12 @@ Function New-BackupShipping {
     [DestinationType]$myDestinationType=$DestinationType;
     [string]$myDestination=$Destination;
     [string]$myDestinationFolderStructure=$DestinationFolderStructure;
-    [nullable[string]]$mySshHostKeyFingerprint=$SshHostKeyFingerprint;
+    [string]$mySshHostKeyFingerprint=$SshHostKeyFingerprint;
     [ActionType]$myActionType=$ActionType;
     [string]$myRetainDaysOnDestination=$RetainDaysOnDestination;
     [string]$myTransferedFileDescriptionSuffix=$TransferedFileDescriptionSuffix;
     [string]$myBackupShippingCatalogTableName=$BackupShippingCatalogTableName;
-    [nullable[string]]$myWinScpPath=$WinScpPath;
+    [string]$myWinScpPath=$WinScpPath;
     [System.Net.NetworkCredential]$myDestinationCredential=$DestinationCredential;
     [LogWriter]$myLogWriter=$LogWriter;
     [BackupShipping]::New($mySourceInstanceConnectionString,$myDatabases,$myBackupTypes,$myHoursToScanForUntransferredBackups,$myDestinationType,$myDestination,$myDestinationFolderStructure,$mySshHostKeyFingerprint,$myActionType,$myRetainDaysOnDestination,$myTransferedFileDescriptionSuffix,$myBackupShippingCatalogTableName,$myWinScpPath,$myDestinationCredential,$myLogWriter)
