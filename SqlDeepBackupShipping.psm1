@@ -205,7 +205,6 @@ Class BackupShipping {
     hidden [string]$LogStaticMessage='';
 
     BackupShipping(){
-
     }
     BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[LogWriter]$LogWriter){
         [BackupType[]]$myBackupTypes=$null;
@@ -254,6 +253,7 @@ Class BackupShipping {
     hidden Init([string]$SourceInstanceConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes,[int]$HoursToScanForUntransferredBackups,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[string]$SshHostKeyFingerprint,[ActionType]$ActionType,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix,[string]$BackupShippingCatalogTableName,[string]$WinScpPath,[System.Net.NetworkCredential]$DestinationCredential,[LogWriter]$LogWriter){
         try
         {
+            Write-Verbose 'Initialization started.'
             $this.SourceInstanceConnectionString=$SourceInstanceConnectionString;
             $this.Databases=$Databases;
             $this.BackupTypes=$BackupTypes;
@@ -272,13 +272,15 @@ Class BackupShipping {
 
             if($null -eq $this.BackupTypes){$this.BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG)};
             if($null -eq $this.HoursToScanForUntransferredBackups){$this.HoursToScanForUntransferredBackups=72};
-            if($null -eq $this.ActionType){$this.ActionType=[ActionType]::COPY};
+            if($null -eq $this.ActionType){$this.ActionType=[ActionType]::Copy};
             if($null -eq $this.TransferedFileDescriptionSuffix){$this.TransferedFileDescriptionSuffix='Transfered'};
             if($null -eq $this.WinScpPath){$this.WinScpPath='C:\Program Files (x86)\WinSCP\WinSCPnet.dll'};
             if($null -eq $this.RetainDaysOnDestination){$this.RetainDaysOnDestination='7'};
             if($null -eq $this.BackupShippingCatalogTableName){$this.BackupShippingCatalogTableName='TransferredFiles'}
-
+            
+            Write-Verbose 'Initialization finished.'
         }catch{
+            Write-Verbose 'Initialization failed.'
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
             throw ('Initialization failed.')
         }
@@ -289,10 +291,10 @@ hidden [bool]Create_ShippedBackupsCatalog() {   #Create Log Table to Write Logs 
     [bool]$myAnswer=[bool]$true
     [string]$myCommand=$null
 
-    $this.ShippedBackupsLogTableName=Clear-SqlParameter -ParameterValue $this.ShippedBackupsLogTableName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+    $this.BackupShippingCatalogTableName=Clear-SqlParameter -ParameterValue $this.BackupShippingCatalogTableName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
     $myCommand="
     DECLARE @myTableName nvarchar(255)
-    SET @myTableName=N'"+ $this.ShippedBackupsLogTableName +"'
+    SET @myTableName=N'"+ $this.BackupShippingCatalogTableName +"'
     
     IF NOT EXISTS (
         SELECT 
@@ -301,9 +303,9 @@ hidden [bool]Create_ShippedBackupsCatalog() {   #Create Log Table to Write Logs 
             [sys].[all_objects] AS myTable
             INNER JOIN [sys].[schemas] AS mySchema ON [myTable].[schema_id]=[mySchema].[schema_id]
         WHERE 
-            [mySchema].[name] + '.' + [myTable].[name] = REPLACE(REPLACE(@myTableName,'[',''),']','')
+            [mySchema].[name] + '.' + [myTable].[name] = [mySchema].[name] + '.' + REPLACE(REPLACE(@myTableName,'[',''),']','')
     ) BEGIN
-        CREATE TABLE [dbo].[" + $this.ShippedBackupsLogTableName + "](
+        CREATE TABLE [dbo].[" + $this.BackupShippingCatalogTableName + "](
             [Id] [bigint] IDENTITY(1,1) NOT NULL,
             [BatchId] [uniqueidentifier] NOT NULL,
             [EventTimeStamp] [datetime] NOT NULL DEFAULT (getdate()),
@@ -329,8 +331,8 @@ hidden [bool]Create_ShippedBackupsCatalog() {   #Create Log Table to Write Logs 
             [TransferStatus] [nvarchar](50) NOT NULL DEFAULT (N'NONE'),
         PRIMARY KEY CLUSTERED  ([Id] ASC) WITH (PAD_INDEX = ON, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, FILLFACTOR = 90, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF, DATA_COMPRESSION = PAGE) ON [PRIMARY]
         ) ON [PRIMARY];
-        CREATE UNIQUE NONCLUSTERED INDEX UNQIX_dbo_"+$this.ShippedBackupsLogTableName+"_Rec ON [dbo].["+$this.ShippedBackupsLogTableName+"] (Destination,DestinationFolder,Media_set_id,Family_sequence_number,InstanceName,DatabaseName) WITH (FillFactor=85,PAD_INDEX=ON,SORT_IN_TEMPDB=ON,DATA_COMPRESSION=PAGE);
-        CREATE NONCLUSTERED INDEX [NCIX_dbo_"+$this.ShippedBackupsLogTableName+"_TransferStatus] ON [dbo].["+$this.ShippedBackupsLogTableName+"] ([TransferStatus] ASC)WITH (PAD_INDEX = ON, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = ON, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, FILLFACTOR = 85, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF, DATA_COMPRESSION = PAGE);
+        CREATE UNIQUE NONCLUSTERED INDEX UNQIX_dbo_"+$this.BackupShippingCatalogTableName+"_Rec ON [dbo].["+$this.BackupShippingCatalogTableName+"] (Destination,DestinationFolder,Media_set_id,Family_sequence_number,InstanceName,DatabaseName) WITH (FillFactor=85,PAD_INDEX=ON,SORT_IN_TEMPDB=ON,DATA_COMPRESSION=PAGE);
+        CREATE NONCLUSTERED INDEX [NCIX_dbo_"+$this.BackupShippingCatalogTableName+"_TransferStatus] ON [dbo].["+$this.BackupShippingCatalogTableName+"] ([TransferStatus] ASC)WITH (PAD_INDEX = ON, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = ON, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, FILLFACTOR = 85, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF, DATA_COMPRESSION = PAGE);
     END
     "
     try{
@@ -1234,13 +1236,13 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         }
         #--=======================Check shipped files catalog table connectivity
         $this.LogWriter.Write($this.LogStaticMessage+'Test shipped files catalog table connectivity.', [LogType]::INF) 
-        if (Test-DatabaseConnection -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -DatabaseName 'master' -eq $false) {
+        if ((Test-DatabaseConnection -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -DatabaseName 'master') -eq $false) {
             $this.LogWriter.Write($this.LogStaticMessage+'Can not connect to shipped files log sql instance on ' + $this.LogWriter.LogInstanceConnectionString, [LogType]::ERR) 
             throw ($this.LogStaticMessage+'Can not connect to shipped files log sql instance.')
         }
         $this.LogWriter.Write($this.LogStaticMessage+'Initializing Shipped files catalog table.', [LogType]::INF)
         if ($this.Create_ShippedBackupsCatalog() -eq $false)  {
-            $this.LogWriter.Write($this.LogStaticMessage+'Can not initialize table to save shipped files catalog on ' + $this.LogWriter.LogInstanceConnectionString + ' to ' + $this.ShippedBackupsLogTableName + ' table.', [LogType]::ERR) 
+            $this.LogWriter.Write($this.LogStaticMessage+'Can not initialize table to save shipped files catalog on ' + $this.LogWriter.LogInstanceConnectionString + ' to ' + $this.BackupShippingCatalogTableName + ' table.', [LogType]::ERR) 
             throw ($this.LogStaticMessage+'Shipped files catalog initialization failed.')
         }
         #--=======================Check destination credential existence
