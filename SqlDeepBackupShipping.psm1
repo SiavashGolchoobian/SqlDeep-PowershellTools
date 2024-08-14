@@ -34,7 +34,7 @@ Class BackupFile {
     [int]$FamilySequenceNumber
     [int]$MaxFamilySequenceNumber
     [string]$ServerName
-    [string]$ServerNameInstanceName
+    [string]$InstanceName
     [string]$DatabaseName
     [datetime]$BackupStartTime
     [datetime]$BackupFinishTime
@@ -50,6 +50,7 @@ Class BackupFile {
     [string]$DestinationFolder
     
     BackupFile([string]$ServerName,[string]$InstanceName,[int]$FamilySequenceNumber,[int]$MaxFamilySequenceNumber,[string]$DatabaseName,[datetime]$BackupStartTime,[datetime]$BackupFinishTime,[datetime]$ExpirationDate,[string]$BackupType,[decimal]$FirstLsn,[decimal]$LastLsn,[int]$MediaSetId,[string]$FilePath,[string]$FileName,[string]$DestinationFolderTemplate){
+        Write-Verbose 'BackupFile object initializing started'
         $this.FamilySequenceNumber=$FamilySequenceNumber
         $this.MaxFamilySequenceNumber=$MaxFamilySequenceNumber
         $this.ServerName=$ServerName
@@ -66,6 +67,7 @@ Class BackupFile {
         $this.FileName=$FileName
         $this.RemoteSourceFilePath=$this.CalcRemoteSourceFilePath()
         $this.DestinationFolder=$this.CalcDestinationFolderPath($DestinationFolderTemplate)
+        Write-Verbose 'BackupFile object initialized'
     }
     hidden [string]CalcRemoteSourceFilePath() {    #Converting local path to UNC path
         Write-Verbose 'Processing Started.'
@@ -1114,8 +1116,8 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
 
     $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name.',[LogType]::INF)
     $mySourceInstanceInfo=Get-InstanceInformation -ConnectionString $ConnectionString -ShowRelatedInstanceOnly
-    if ($mySourceInstanceInfo.PsObject.Properties.Name -eq 'MachineNameInstanceName') {
-        $mySourceServerName=$mySourceInstanceInfo.MachineNameInstanceName
+    if ($mySourceInstanceInfo.PsObject.Properties.Name -eq 'MachineName') {
+        $mySourceServerName=$mySourceInstanceInfo.MachineName
         $mySourceInstanceName=$mySourceInstanceInfo.InstanceName
     } else {
         $this.LogWriter.Write($this.LogStaticMessage+'Get-InstanceInformation failure.', [LogType]::ERR) 
@@ -1140,7 +1142,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
     SET @TransferedSuffix = N'"+ $TransferedSuffix +"';    
     
     SELECT
-        [myMediaSet].[media_set_id],																											--PK
+        [myMediaSet].[media_set_id]                                                                                  AS [MediaSetId],   --PK
         CAST([myMediaSet].[family_sequence_number] AS INT)															 AS [FamilySequenceNumber],	--PK
         [myUniqueBackupSet].[database_name]																			 AS [DatabaseName],
         [myUniqueBackupSet].[backup_start_date]																		 AS [BackupStartTime],
