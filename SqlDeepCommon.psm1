@@ -359,15 +359,15 @@
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'ComputerName',@myMachineName OUTPUT
                     SET @myRegInstanceFilter='SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'Domain',@myDomainName OUTPUT
-                    SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\'+@myInstanceRegName++'\MSSQLServer\SuperSocketNetLib\Tcp\IPAll'
+                    SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\'+@myInstanceRegName+'\MSSQLServer\SuperSocketNetLib\Tcp\IPAll'
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'TcpPort',@myInstancePort OUTPUT
-                    SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\'+@myInstanceRegName++'\MSSQLServer\SuperSocketNetLib'
+                    SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\'+@myInstanceRegName+'\MSSQLServer\SuperSocketNetLib'
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'ForceEncryption',@myForceEncryption OUTPUT
-                    SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\'+@myInstanceRegName++'\MSSQLServer'
+                    SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\'+@myInstanceRegName+'\MSSQLServer'
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'DefaultData',@myDefaultDataPath OUTPUT
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'DefaultLog',@myDefaultLogPath OUTPUT
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'BackupDirectory',@myDefaultBackupPath OUTPUT
-                    SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\'+@myInstanceRegName++'\Setup'
+                    SET @myRegInstanceFilter='SOFTWARE\Microsoft\Microsoft SQL Server\'+@myInstanceRegName+'\Setup'
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'Collation',@myCollation OUTPUT
                     EXECUTE master.dbo.xp_regread 'HKEY_LOCAL_MACHINE',@myRegInstanceFilter,'PatchLevel',@myPatchLevel OUTPUT
 
@@ -375,7 +375,7 @@
                         [MachineName]=@myMachineName,
                         [DomainName]=@myDomainName,
                         [InstancePort]=@myInstancePort,
-                        [ForceEncryption]=@myInstancePort,
+                        [ForceEncryption]=@myForceEncryption,
                         [DefaultDataPath]=@myDefaultDataPath,
                         [DefaultLogPath]=@myDefaultLogPath,
                         [DefaultBackupPath]=@myDefaultBackupPath,

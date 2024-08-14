@@ -701,188 +701,192 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
     [WinSCP.RemoteDirectoryInfo]$myDirResult=$null
     #>
 
-    $myDestinationPath = $DestinationPath.Replace('//','/')
-    $myDestinationPassword = $Credential.Password
-    # Setup credential domain name prefix
-    if ($Credential.Domain.Trim().Length -eq 0){
-        $myDestinationUser=$Credential.UserName.Trim()
-    }else{
-        $myDestinationUser=$Credential.Domain.Trim()+'\'+$Credential.UserName.Trim()
-    }
-    # Setup session options
-    switch ($DestinationType) {
-        [DestinationType]::FTP { $mySessionArguments= @{
-            FtpMode = 'Passive'
-            FtpSecure = 'None'
-            Protocol = 'ftp'
-            HostName = $Server
-            UserName = $myDestinationUser
-            Password = $myDestinationPassword
-        }}
-        [DestinationType]::SFTP { $mySessionArguments= @{
-            Protocol = 'Sftp'
-            HostName = $Server
-            UserName = $myDestinationUser
-            Password = $myDestinationPassword
-            SshHostKeyFingerprint = $SshKeyFingerprint
-        }}
-        [DestinationType]::SCP { $mySessionArguments= @{
-            Protocol = 'Scp'
-            HostName = $Server
-            UserName = $myDestinationUser
-            Password = $myDestinationPassword
-            SshHostKeyFingerprint = $SshKeyFingerprint
-        }}
-    }
+    try{
+        $myDestinationPath = $DestinationPath.Replace('//','/')
+        $myDestinationPassword = $Credential.Password
+        # Setup credential domain name prefix
+        if ($Credential.Domain.Trim().Length -eq 0){
+            $myDestinationUser=$Credential.UserName.Trim()
+        }else{
+            $myDestinationUser=$Credential.Domain.Trim()+'\'+$Credential.UserName.Trim()
+        }
+        # Setup session options
+        switch ($DestinationType) {
+            FTP { $mySessionArguments= @{
+                FtpMode = 'Passive'
+                FtpSecure = 'None'
+                Protocol = 'ftp'
+                HostName = $Server
+                UserName = $myDestinationUser
+                Password = $myDestinationPassword
+            }}
+            SFTP { $mySessionArguments= @{
+                Protocol = 'Sftp'
+                HostName = $Server
+                UserName = $myDestinationUser
+                Password = $myDestinationPassword
+                SshHostKeyFingerprint = $SshKeyFingerprint
+            }}
+            SCP { $mySessionArguments= @{
+                Protocol = 'Scp'
+                HostName = $Server
+                UserName = $myDestinationUser
+                Password = $myDestinationPassword
+                SshHostKeyFingerprint = $SshKeyFingerprint
+            }}
+        }
 
-    # Define Session and do operation
-    $this.LogWriter.Write($this.LogStaticMessage+'Try to create WinScp session.', [LogType]::INF)
-    $mySessionOptions = New-Object WinSCP.SessionOptions -Property $mySessionArguments
-    $mySession = New-Object WinSCP.Session
-    $this.LogWriter.Write($this.LogStaticMessage+'Try to execute operation ' + $Operation + ' over ' + $DestinationType + ' protocl on ' + $Server, [LogType]::INF)
-    if($Operation -eq [HostOperation]::ISALIVE)
-    {
-        try
+        # Define Session and do operation
+        $this.LogWriter.Write($this.LogStaticMessage+'Try to create WinScp session.', [LogType]::INF)
+        $mySessionOptions = New-Object WinSCP.SessionOptions -Property $mySessionArguments
+        $mySession = New-Object WinSCP.Session
+        $this.LogWriter.Write($this.LogStaticMessage+'Try to execute operation ' + $Operation + ' over ' + $DestinationType + ' protocl on ' + $Server, [LogType]::INF)
+        if($Operation -eq [HostOperation]::ISALIVE)
         {
-            $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for IsAlive operation.', [LogType]::INF)
-            $mySession.Open($mySessionOptions)      # Connect
-            $myAnswer=$true
-        }catch{
-            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-            $myAnswer=$false
-        }
-        finally
-        {
-            $mySession.Dispose()    # Disconnect, clean up
-        }
-    }
-    elseif($Operation -eq [HostOperation]::UPLOAD)
-    {
-        try
-        {
-            $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for Upload operation.', [LogType]::INF)
-            $mySession.Open($mySessionOptions)      # Connect
- 
-            # Upload files
-            $myTransferOptions = New-Object WinSCP.TransferOptions
-            $myTransferOptions.TransferMode = 'Binary'
- 
-            $myOperationResult = $mySession.PutFiles($SourceFilePath,$DestinationPath, $False, $myTransferOptions)
-        
-            # Throw on any error
-            #$myOperationResult.Check()
-            #$mySession.Output
-            $myAnswer=$myOperationResult.IsSuccess
-        
-            # Print results
-            if ($myAnswer -eq $true) {
-                foreach ($myTransfer in $myOperationResult.Transfers)
-                {
-                    $this.LogWriter.Write($this.LogStaticMessage+'Upload of ' + ($myTransfer.FileName) + ' succeeded.', [LogType]::INF)
-                }
-            }
-        }catch{
-            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-            $myAnswer=$false
-        }
-        finally
-        {
-            # Disconnect, clean up
-            $mySession.Dispose()
-        }
-    }
-    elseif($Operation -eq [HostOperation]::DOWNLOAD)
-    {
-        try
-        {
-            # Connect
-            $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for Download operation.', [LogType]::INF)
-            $mySession.Open($mySessionOptions)
-    
-            # Download the file and throw on any error
-            $myOperationResult = $mySession.GetFiles($DestinationPath,$SourceFilePath)
-            
-            # Throw error if found
-            #$myOperationResult.Check()
-            #$mySession.Output
-            $myAnswer=$myOperationResult.IsSuccess
-        }catch{
-            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-            $myAnswer=$false
-        }
-        finally
-        {
-            # Disconnect, clean up
-            $mySession.Dispose()
-        }    
-    }
-    elseif($Operation -eq [HostOperation]::DIR)
-    {
-        try
-        {
-            # Connect
-            $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for Dir operation.', [LogType]::INF)
-            $mySession.Open($mySessionOptions)
-    
-            # Download the file and throw on any error
-            $myDirResult = $mySession.ListDirectory($DestinationPath)
-            
-            # Throw error if found
-            $mySession.Output
- 
-            $myAnswer=$true
-        }catch{
-            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-            $myAnswer=$false
-        }
-        finally
-        {
-            # Disconnect, clean up
-            $mySession.Dispose()
-        }  
-    }
-    elseif($Operation -eq [HostOperation]::MKDIR)
-    {
-        try
-        {
-            # Connect
-            $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for MkDir operation.', [LogType]::INF)
-            $mySession.Open($mySessionOptions)
-    
-            # Create the directory and throw on any error
-            [string]$myPath=''
-            [array]$myFolders = $DestinationPath.Split('/')
-            foreach ($myFolder in $myFolders)
+            try
             {
-                if ($myFolder.ToString().Trim().Length -gt 0) 
-                {
-                    $myPath += '/' + $myFolder
-                    if ($mySession.FileExists($myPath) -eq $false) 
+                $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for IsAlive operation.', [LogType]::INF)
+                $mySession.Open($mySessionOptions)      # Connect
+                $myAnswer=$true
+            }catch{
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                $myAnswer=$false
+            }
+            finally
+            {
+                $mySession.Dispose()    # Disconnect, clean up
+            }
+        }
+        elseif($Operation -eq [HostOperation]::UPLOAD)
+        {
+            try
+            {
+                $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for Upload operation.', [LogType]::INF)
+                $mySession.Open($mySessionOptions)      # Connect
+    
+                # Upload files
+                $myTransferOptions = New-Object WinSCP.TransferOptions
+                $myTransferOptions.TransferMode = 'Binary'
+    
+                $myOperationResult = $mySession.PutFiles($SourceFilePath,$DestinationPath, $False, $myTransferOptions)
+            
+                # Throw on any error
+                #$myOperationResult.Check()
+                #$mySession.Output
+                $myAnswer=$myOperationResult.IsSuccess
+            
+                # Print results
+                if ($myAnswer -eq $true) {
+                    foreach ($myTransfer in $myOperationResult.Transfers)
                     {
-                        $mySession.CreateDirectory($myPath)
-                        $this.LogWriter.Write($this.LogStaticMessage+'Create new directory on ' + $myPath, [LogType]::INF)
+                        $this.LogWriter.Write($this.LogStaticMessage+'Upload of ' + ($myTransfer.FileName) + ' succeeded.', [LogType]::INF)
                     }
                 }
+            }catch{
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                $myAnswer=$false
             }
-            
-            $myAnswer=$mySession.FileExists($DestinationPath)
-            # Throw error if found
-            $mySession.Output
-        }catch{
-            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-            $myAnswer=$false
+            finally
+            {
+                # Disconnect, clean up
+                $mySession.Dispose()
+            }
         }
-        finally
+        elseif($Operation -eq [HostOperation]::DOWNLOAD)
         {
-            # Disconnect, clean up
-            $mySession.Dispose()
-        }  
+            try
+            {
+                # Connect
+                $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for Download operation.', [LogType]::INF)
+                $mySession.Open($mySessionOptions)
+        
+                # Download the file and throw on any error
+                $myOperationResult = $mySession.GetFiles($DestinationPath,$SourceFilePath)
+                
+                # Throw error if found
+                #$myOperationResult.Check()
+                #$mySession.Output
+                $myAnswer=$myOperationResult.IsSuccess
+            }catch{
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                $myAnswer=$false
+            }
+            finally
+            {
+                # Disconnect, clean up
+                $mySession.Dispose()
+            }    
+        }
+        elseif($Operation -eq [HostOperation]::DIR)
+        {
+            try
+            {
+                # Connect
+                $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for Dir operation.', [LogType]::INF)
+                $mySession.Open($mySessionOptions)
+        
+                # Download the file and throw on any error
+                $myDirResult = $mySession.ListDirectory($DestinationPath)
+                
+                # Throw error if found
+                $mySession.Output
+    
+                $myAnswer=$true
+            }catch{
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                $myAnswer=$false
+            }
+            finally
+            {
+                # Disconnect, clean up
+                $mySession.Dispose()
+            }  
+        }
+        elseif($Operation -eq [HostOperation]::MKDIR)
+        {
+            try
+            {
+                # Connect
+                $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for MkDir operation.', [LogType]::INF)
+                $mySession.Open($mySessionOptions)
+        
+                # Create the directory and throw on any error
+                [string]$myPath=''
+                [array]$myFolders = $DestinationPath.Split('/')
+                foreach ($myFolder in $myFolders)
+                {
+                    if ($myFolder.ToString().Trim().Length -gt 0) 
+                    {
+                        $myPath += '/' + $myFolder
+                        if ($mySession.FileExists($myPath) -eq $false) 
+                        {
+                            $mySession.CreateDirectory($myPath)
+                            $this.LogWriter.Write($this.LogStaticMessage+'Create new directory on ' + $myPath, [LogType]::INF)
+                        }
+                    }
+                }
+                
+                $myAnswer=$mySession.FileExists($DestinationPath)
+                # Throw error if found
+                $mySession.Output
+            }catch{
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                $myAnswer=$false
+            }
+            finally
+            {
+                # Disconnect, clean up
+                $mySession.Dispose()
+            }  
+        }
+        else 
+        {
+            $this.LogWriter.Write($this.LogStaticMessage+'Operation not specified, it must be upload/download/list/dir/mkdir', [LogType]::WRN)
+        }
+    }catch{
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+        $myAnswer=$false
     }
-    else 
-    {
-        $this.LogWriter.Write($this.LogStaticMessage+'Operation not specified, it must be upload/download/list/dir/mkdir', [LogType]::WRN)
-    }
- 
     return $myAnswer
 }
 hidden [bool]Operate_UNC_IsAlive([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char]$TemporalDriveLetter) {  #Check UNC path is alive
@@ -1060,6 +1064,7 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
     return $myAnswer
 }
 [void] Save_CredentialToStore([string]$StoreCredentialName,[System.Net.NetworkCredential]$Credential){  #Save credential to Windows Credential Manager
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     if(-not(Get-Module -ListAvailable -Name CredentialManager)) {
         Install-Module CredentialManager -force -Scope CurrentUser
     }
@@ -1070,9 +1075,11 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
     New-StoredCredential -Target StoredCredentialName -Type Generic -UserName $Credential.UserName -Password $Credential.Password -Persist LocalMachine
 }
 [void] Set_DestinationCredential([System.Net.NetworkCredential]$Credential){    #Retrive destination credential from input
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     $this.DestinationCredential=$Credential
 }
 [void] Set_DestinationCredential([string]$StoredCredentialName){    #Retrive destination credential from Windows Credential Manager
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     if(-not(Get-Module -ListAvailable -Name CredentialManager)) {
         Install-Module CredentialManager -force -Scope CurrentUser
     }
@@ -1082,14 +1089,17 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
     $this.DestinationCredential=(Get-StoredCredential -Target $StoredCredentialName).GetNetworkCredential()
 }
 [void] Set_DestinationCredential([string]$UserName,[string]$CipheredPassword, [byte[]]$Key){    #Generate destination credential from plaintext username and cipheredtext password
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [SecureString]$myPassword = $null
     $myPassword = ConvertTo-SecureString -String $CipheredPassword -Key $Key 
     $this.Set_DestinationCredential($UserName, $myPassword)
 }
 [void] Set_DestinationCredential([string]$UserName,[SecureString]$Password){    #Generate destination credential from plain text username and securestring password
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     $this.DestinationCredential=(New-Object System.Management.Automation.PsCredential -ArgumentList $UserName,$Password).GetNetworkCredential()
 }
 [void] Set_DestinationCredential([string]$UserName,[string]$Password){  #Generate destination credential from plain text username and password
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     $this.DestinationCredential=New-Object System.Net.NetworkCredential($UserName, $Password)
 }
 hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[]]$Databases,[BackupType[]]$BackupTypes,[int]$HoursToScanForUntransferredBackups,[string]$TransferedSuffix,[string]$DestinationFolderStructure) {  #Get list of untransferred backup files list
@@ -1116,8 +1126,10 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         throw 'Source server name is empty.'
     }
 
-    $myDatabases=Join-String -InputObject $Databases -Separator ',' -SingleQuote
-    $myBackupTypes=(Join-String -InputObject $BackupTypes -Separator ',' -SingleQuote).Replace('FULL','D').Replace('DIFF','I').Replace('LOG','L')
+    #$myDatabases=Join-String -InputObject $Databases -Separator ',' -SingleQuote
+    #$myBackupTypes=(Join-String -InputObject $BackupTypes -Separator ',' -SingleQuote).Replace('FULL','D').Replace('DIFF','I').Replace('LOG','L')
+    $myDatabases=($Databases | ForEach-Object{"'" + $_ + "'"}) -join ','
+    $myBackupTypes=(($BackupTypes | ForEach-Object{"'" + $_ + "'"}) -join ',').Replace('FULL','D').Replace('DIFF','I').Replace('LOG','L')
     $myCommand="
     DECLARE @myCurrentDateTime DATETIME;
     DECLARE @HoursToScanForUntransferredBackups INT;
@@ -1255,10 +1267,10 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         $this.LogWriter.Write($this.LogStaticMessage+'Check Destination Connectivity with DestinationType of ' + $this.DestinationType + ', Destionation location of ' + $this.Destination + ' and DestinationCredential Username of ' + $this.DestinationCredential.UserName, [LogType]::INF) 
         $myDestinationIsAlive = switch ($this.DestinationType) 
         {
-            [DestinationType]::[FTP]    {$this.Operate_OverFtp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null)}
-            [DestinationType]::[SFTP]   {$this.Operate_OverSftp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null,$this.SshHostKeyFingerprint)}
-            [DestinationType]::[SCP]    {$this.Operate_OverScp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null,$this.SshHostKeyFingerprint)}
-            [DestinationType]::[UNC]    {$this.Operate_OverUnc([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,'A')}
+            FTP    {$this.Operate_OverFtp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null)}
+            SFTP   {$this.Operate_OverSftp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null,$this.SshHostKeyFingerprint)}
+            SCP    {$this.Operate_OverScp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null,$this.SshHostKeyFingerprint)}
+            UNC    {$this.Operate_OverUnc([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,'A')}
         }
         if ($myDestinationIsAlive -eq $false){
             $this.LogWriter.Write($this.LogStaticMessage+'Destination is not avilable.', [LogType]::ERR) 
@@ -1287,17 +1299,17 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         $this.LogWriter.Write($this.LogStaticMessage+'Try to create folders.',[LogType]::INF)
         switch ($this.DestinationType) 
         {
-            [DestinationType]::[FTP]   {$myFolderList | ForEach-Object {$this.Operate_OverFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null)}}
-            [DestinationType]::[SFTP]  {$myFolderList | ForEach-Object {$this.Operate_OverSFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null,$this.SshHostKeyFingerprint)}}
-            [DestinationType]::[SCP]   {$myFolderList | ForEach-Object {$this.Operate_OverScp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null,$this.SshHostKeyFingerprint)}}
-            [DestinationType]::[UNC]   {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.FolderPath)}}
-            [DestinationType]::[LOCAL] {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.FolderPath)}}
+            FTP   {$myFolderList | ForEach-Object {$this.Operate_OverFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null)}}
+            SFTP  {$myFolderList | ForEach-Object {$this.Operate_OverSFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null,$this.SshHostKeyFingerprint)}}
+            SCP   {$myFolderList | ForEach-Object {$this.Operate_OverScp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null,$this.SshHostKeyFingerprint)}}
+            UNC   {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.FolderPath)}}
+            LOCAL {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.FolderPath)}}
         }
         #--=======================Transfer file(s) to destination
         $this.LogWriter.Write($this.LogStaticMessage+'Transfer file(s) from source to destination is started.',[LogType]::INF)
         switch ($this.DestinationType) 
         {
-            [DestinationType]::[FTP]   {$myUntransferredBackups | ForEach-Object {
+            FTP   {$myUntransferredBackups | ForEach-Object {
                                                                 $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';'))
@@ -1310,7 +1322,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 }
                                                             }
                     }
-            [DestinationType]::[SFTP]  {$myUntransferredBackups | ForEach-Object {
+            SFTP  {$myUntransferredBackups | ForEach-Object {
                                                                 $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';'))
@@ -1323,7 +1335,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 }
                                                             }
                     }
-            [DestinationType]::[SCP]   {$myUntransferredBackups | ForEach-Object {
+            SCP   {$myUntransferredBackups | ForEach-Object {
                                                                 $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';'))
@@ -1336,7 +1348,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 }
                                                             }
                     }
-            [DestinationType]::[UNC]   {$myUntransferredBackups | ForEach-Object {
+            UNC   {$myUntransferredBackups | ForEach-Object {
                                                                 $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';')) 
@@ -1349,7 +1361,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 } 
                                                             }
                     }
-            [DestinationType]::[LOCAL] {$myUntransferredBackups | ForEach-Object {
+            LOCAL {$myUntransferredBackups | ForEach-Object {
                                                                 $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';')) 
