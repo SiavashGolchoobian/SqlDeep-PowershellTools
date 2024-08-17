@@ -770,6 +770,7 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                 $myTransferOptions = New-Object WinSCP.TransferOptions
                 $myTransferOptions.TransferMode = 'Binary'
     
+                $this.LogWriter.Write($this.LogStaticMessage+'Trying to transfer ' + $SourceFilePath + ' to ' + $DestinationPath, [LogType]::INF)
                 $myOperationResult = $mySession.PutFiles($SourceFilePath,$DestinationPath, $False, $myTransferOptions)
             
                 # Throw on any error
@@ -783,6 +784,8 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                     {
                         $this.LogWriter.Write($this.LogStaticMessage+'Upload of ' + ($myTransfer.FileName) + ' succeeded.', [LogType]::INF)
                     }
+                }else{
+                    $this.LogWriter.Write($this.LogStaticMessage+'Upload of ' + $SourceFilePath + ' to ' + $DestinationPath + ' failed.', [LogType]::ERR)
                 }
             }catch{
                 $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
@@ -803,6 +806,7 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                 $mySession.Open($mySessionOptions)
         
                 # Download the file and throw on any error
+                $this.LogWriter.Write($this.LogStaticMessage+'Trying to download ' + $DestinationPath + ' into ' + $SourceFilePath, [LogType]::INF)
                 $myOperationResult = $mySession.GetFiles($DestinationPath,$SourceFilePath)
                 
                 # Throw error if found
@@ -828,6 +832,7 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                 $mySession.Open($mySessionOptions)
         
                 # Download the file and throw on any error
+                $this.LogWriter.Write($this.LogStaticMessage+'Get directory list of ' + $DestinationPath, [LogType]::INF)
                 $myDirResult = $mySession.ListDirectory($DestinationPath)
                 
                 # Throw error if found
@@ -853,6 +858,7 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                 $mySession.Open($mySessionOptions)
         
                 # Create the directory and throw on any error
+                $this.LogWriter.Write($this.LogStaticMessage+'Destination path is ' + $DestinationPath, [LogType]::INF)
                 [string]$myPath=''
                 [array]$myFolders = $DestinationPath.Split('/')
                 foreach ($myFolder in $myFolders)
@@ -860,10 +866,12 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                     if ($myFolder.ToString().Trim().Length -gt 0) 
                     {
                         $myPath += '/' + $myFolder
+                        $this.LogWriter.Write($this.LogStaticMessage+'Check path existance ' + $myPath, [LogType]::INF)
                         if ($mySession.FileExists($myPath) -eq $false) 
                         {
+                            $this.LogWriter.Write($this.LogStaticMessage+'Creating new directory as ' + $myPath, [LogType]::INF)
                             $mySession.CreateDirectory($myPath)
-                            $this.LogWriter.Write($this.LogStaticMessage+'Create new directory on ' + $myPath, [LogType]::INF)
+                            $this.LogWriter.Write($this.LogStaticMessage+'New directory created as ' + $myPath, [LogType]::INF)
                         }
                     }
                 }
@@ -1288,35 +1296,27 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         #--=======================Create folder structure in destination
         $this.LogWriter.Write($this.LogStaticMessage+'Create folder structure on destination ' + $this.Destination + ' With path structure of ' + $this.DestinationFolderStructure,[LogType]::INF)
         $this.LogWriter.Write($this.LogStaticMessage+'Extract unique folder list.',[LogType]::INF)
-        $myFolderList=[System.Collections.ArrayList]::new();
-        [string]$myFolderPath=$null
-        ForEach ($myFolderPath IN ($myUntransferredBackups | Select-Object -Property DestinationFolder -Unique)) {
-            $myFolderItem = [PSCustomObject]@{
-                FolderPath=$myFolderPath
-                Date=(Get-Date)
-            }
-            $null = $myFolderList.Add($myFolderItem)
-        }
+        $myFolderList = $myUntransferredBackups | Select-Object -Property DestinationFolder -Unique
 
         $this.LogWriter.Write($this.LogStaticMessage+'Try to create folders.',[LogType]::INF)
         switch ($this.DestinationType) 
         {
-            FTP   {$myFolderList | ForEach-Object {$this.Operate_OverFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null)}}
-            SFTP  {$myFolderList | ForEach-Object {$this.Operate_OverSFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null,$this.SshHostKeyFingerprint)}}
-            SCP   {$myFolderList | ForEach-Object {$this.Operate_OverScp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.FolderPath,$null,$this.SshHostKeyFingerprint)}}
-            UNC   {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.FolderPath)}}
-            LOCAL {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.FolderPath)}}
+            FTP   {$myFolderList | ForEach-Object {$this.Operate_OverFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.DestinationFolder,$null)}}
+            SFTP  {$myFolderList | ForEach-Object {$this.Operate_OverSFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.DestinationFolder,$null,$this.SshHostKeyFingerprint)}}
+            SCP   {$myFolderList | ForEach-Object {$this.Operate_OverScp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.DestinationFolder,$null,$this.SshHostKeyFingerprint)}}
+            UNC   {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.DestinationFolder)}}
+            LOCAL {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.DestinationFolder)}}
         }
         #--=======================Transfer file(s) to destination
         $this.LogWriter.Write($this.LogStaticMessage+'Transfer file(s) from source to destination is started.',[LogType]::INF)
         switch ($this.DestinationType) 
         {
             FTP   {$myUntransferredBackups | ForEach-Object {
-                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
+                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.FilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';'))
                                                                 {
-                                                                    $mySendResult=$this.Operate_OverFtp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.BackupFileName),$mySourceFile)
+                                                                    $mySendResult=$this.Operate_OverFtp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile)
                                                                     if($mySendResult -eq $true) {
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
@@ -1325,11 +1325,11 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                             }
                     }
             SFTP  {$myUntransferredBackups | ForEach-Object {
-                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
+                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.FilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';'))
                                                                 {
-                                                                    $mySendResult=$this.Operate_OverSftp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.BackupFileName),$mySourceFile,$this.SshHostKeyFingerprint)
+                                                                    $mySendResult=$this.Operate_OverSftp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile,$this.SshHostKeyFingerprint)
                                                                     if($mySendResult -eq $true) {
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
@@ -1338,11 +1338,11 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                             }
                     }
             SCP   {$myUntransferredBackups | ForEach-Object {
-                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
+                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.FilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';'))
                                                                 {
-                                                                    $mySendResult=$this.Operate_OverScp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.BackupFileName),$mySourceFile,$this.SshHostKeyFingerprint)
+                                                                    $mySendResult=$this.Operate_OverScp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile,$this.SshHostKeyFingerprint)
                                                                     if($mySendResult -eq $true) {
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
@@ -1351,11 +1351,11 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                             }
                     }
             UNC   {$myUntransferredBackups | ForEach-Object {
-                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
+                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.FilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';')) 
                                                                 {
-                                                                    $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'\'+$_.BackupFileName),('A','B'),$mySourceFile)
+                                                                    $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'\'+$_.FileName),('A','B'),$mySourceFile)
                                                                     if($mySendResult -eq $true) {
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
@@ -1364,11 +1364,11 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                             }
                     }
             LOCAL {$myUntransferredBackups | ForEach-Object {
-                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.BackupFilePath}else{$_.RemoteSourceFilePath}
+                                                                $mySourceFile=if($myCurrentMachineName -eq $_.ServerName.ToUpper()){$_.FilePath}else{$_.RemoteSourceFilePath}
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';')) 
                                                                 {
-                                                                    $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'\'+$_.BackupFileName),'A',$mySourceFile)
+                                                                    $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'\'+$_.FileName),'A',$mySourceFile)
                                                                     if($mySendResult -eq $true) {
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
