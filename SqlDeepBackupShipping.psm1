@@ -1,6 +1,6 @@
 Using module .\SqlDeepLogWriter.psm1
 Using module .\SqlDeepCommon.psm1
-#Import-Module 'C:\Program Files (x86)\WinSCP\WinSCPnet.dll'
+
 enum DatabaseGroup {
     ALL_DATABASES
     SYSTEM_DATABASES
@@ -82,7 +82,7 @@ Class BackupFile {
         }
         return $myAnswer
     }
-    hidden [string]CalcDestinationFolderPath([string]$FolderTemplate){
+    hidden [string]CalcDestinationFolderPath([string]$FolderTemplate){  #Replace Generic variables of Destination path by it's values
         Write-Verbose 'Processing Started.'
         [string]$myAnswer=$null;
         [System.Globalization.PersianCalendar]$myPersianCalendar=$null
@@ -128,11 +128,12 @@ Class BackupFile {
             Replace('{ServerName}',$myServerName).
             Replace('{InstanceName}',$myInstanceName).
             Replace('{DatabaseName}',$myDatabaseName)
-        if ($myAnswer.ToUpper() -like "*{CustomRule01}*".ToUpper()) {$myAnswer=$this.CalcDestinationFolderPathCustomRule01($myAnswer)}
-        if ($myAnswer.ToUpper() -like "*{CustomRule02}*".ToUpper()) {$myAnswer=$this.CalcDestinationFolderPathCustomRule02($myAnswer)}
+        if ($myAnswer.ToUpper() -like "*{CustomRule01}*".ToUpper()) {$myAnswer=$this.CalcDestinationFolderPath_CustomRule01($myAnswer)}
+        if ($myAnswer.ToUpper() -like "*{CustomRule02(G)}*".ToUpper()) {$myAnswer=$this.CalcDestinationFolderPath_CustomRule02($myAnswer,'Gregorian')}
+        if ($myAnswer.ToUpper() -like "*{CustomRule02(J)}*".ToUpper()) {$myAnswer=$this.CalcDestinationFolderPath_CustomRule02($myAnswer,'Jalali')}
         return $myAnswer
     }
-    hidden [string]CalcDestinationFolderPathCustomRule01([string]$FolderTemplate){
+    hidden [string]CalcDestinationFolderPath_CustomRule01([string]$FolderTemplate){  #Put log backups in disk_only folder and other backup types in tape_only folder
         Write-Verbose 'Processing Started.'
         [string]$myAnswer=$null;
         [string]$myRuleName=$null;
@@ -146,7 +147,7 @@ Class BackupFile {
         }
         return $myAnswer
     }
-    hidden [string]CalcDestinationFolderPathCustomRule02([string]$FolderTemplate){
+    hidden [string]CalcDestinationFolderPath_CustomRule02([string]$FolderTemplate,[string]$CalendarType){  #Put backup files of first day of week in 'weekly' folder, first day of month in 'monthly' folder and first day of year in 'yearly' folder and other days in 'daily' folder according to gregorian(G) or Jalali(J) fashion calendar
         Write-Verbose 'Processing Started.'
         [string]$myAnswer=$null;
         [string]$myRuleName=$null;
@@ -162,7 +163,9 @@ Class BackupFile {
         [string]$myGregorianDayOfWeek=''
 
         $myAnswer=$FolderTemplate
-        $myRuleName='{CustomRule02}'
+        $CalendarType=$CalendarType.ToUpper()
+        if ( $CalendarType -notin ('Gregorian'.ToUpper() , 'Jalali'.ToUpper()) ) {$CalendarType='Gregorian'.ToUpper()} 
+
         $myPersianCalendar=New-Object system.globalization.persiancalendar
         $myMapGregorianWeekDayToPersianWeekDay=@{6='1';0='2';1='3';2='4';3='5';4='6';5='7'}
         $myJalaliYear=$myPersianCalendar.GetYear($this.BackupStartTime).ToString()
@@ -176,10 +179,23 @@ Class BackupFile {
         if ($myJalaliMonth.Length -eq 1) {$myJalaliMonth='0'+$myJalaliMonth}
         if ($myJalaliDayOfMonth.Length -eq 1) {$myJalaliDayOfMonth='0'+$myJalaliDayOfMonth}
 
-        IF ($myJalaliMonth -eq '01' -and $myJalaliDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "yearly")}
-        ELSEIF ($myJalaliDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "monthly")}
-        ELSEIF ($myJalaliDayOfWeek -eq '1') {$myAnswer=$myAnswer.Replace($myRuleName, "weekly")}
-        ELSE {$myAnswer=$myAnswer.Replace($myRuleName, "daily")}
+        switch ($CalendarType) {
+            'Gregorian'.ToUpper()   {
+                    $myRuleName='{CustomRule02(G)}'
+                    IF ($myGregorianMonth -eq '01' -and $myGregorianDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "yearly")}
+                    ELSEIF ($myGregorianDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "monthly")}
+                    ELSEIF ($myGregorianDayOfWeek -eq '1') {$myAnswer=$myAnswer.Replace($myRuleName, "weekly")}
+                    ELSE {$myAnswer=$myAnswer.Replace($myRuleName, "daily")}
+                }
+            'Jalali'.ToUpper()      {
+                    $myRuleName='{CustomRule02(J)}' 
+                    IF ($myJalaliMonth -eq '01' -and $myJalaliDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "yearly")}
+                    ELSEIF ($myJalaliDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "monthly")}
+                    ELSEIF ($myJalaliDayOfWeek -eq '1') {$myAnswer=$myAnswer.Replace($myRuleName, "weekly")}
+                    ELSE {$myAnswer=$myAnswer.Replace($myRuleName, "daily")}
+                }
+        }
+
         return $myAnswer
     }
     [void] Populate_DestinationFolder ([string]$FolderTemplate){
@@ -338,6 +354,7 @@ hidden [bool]Create_ShippedBackupsCatalog() {   #Create Log Table to Write Logs 
     END
     "
     try{
+        Write-Verbose $myCommand
         Invoke-Sqlcmd -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
     }Catch{
         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
@@ -427,6 +444,7 @@ hidden [void]New_ShippedBackupsCatalogItem([BackupFile]$BackupFile,[string]$Tran
             VALUES ([mySource].[BatchId],[mySource].[Destination],[mySource].[DestinationFolder],[mySource].[UncBackupFilePath],[mySource].[media_set_id],[mySource].[family_sequence_number],[mySource].[MachineName],[mySource].[InstanceName],[mySource].[DatabaseName],[mySource].[backup_start_date],[mySource].[backup_finish_date],[mySource].[expiration_date],[mySource].[BackupType],[mySource].[BackupFirstLSN],[mySource].[BackupLastLSN],[mySource].[BackupFilePath],[mySource].[BackupFileName],[mySource].[max_family_sequence_number],[mySource].[DeleteDate],[mySource].[IsDeleted],[mySource].[TransferStatus]);
     "
     try{
+        Write-Verbose $myCommand
         Invoke-Sqlcmd -ConnectionString $this.LogWriter.LogInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
     }Catch{
         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
@@ -517,6 +535,7 @@ hidden [void]Set_ShippedBackupsCatalogItemStatus([BackupFile]$BackupFile){
         VALUES ([mySource].[BatchId],[mySource].[Destination],[mySource].[DestinationFolder],[mySource].[UncBackupFilePath],[mySource].[media_set_id],[mySource].[family_sequence_number],[mySource].[MachineName],[mySource].[InstanceName],[mySource].[DatabaseName],[mySource].[backup_start_date],[mySource].[backup_finish_date],[mySource].[expiration_date],[mySource].[BackupType],[mySource].[BackupFirstLSN],[mySource].[BackupLastLSN],[mySource].[BackupFilePath],[mySource].[BackupFileName],[mySource].[max_family_sequence_number],[mySource].[DeleteDate],[mySource].[IsDeleted],[mySource].[TransferStatus]);
     "
     try{
+        Write-Verbose $myCommand
         Invoke-Sqlcmd -ConnectionString $this.LogWriter.LogInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
     }Catch{
         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
@@ -549,7 +568,7 @@ hidden [void]Set_ShippedBackupsCatalogItemDeleteDate(){
     $myCommandExtension=''
     if ($this.RetainDaysOnDestination.ToUpper() -eq 'CustomRule01'.ToUpper()) {
         #CustomRule01: Keep log backup files for 2days, keep full backup and differential backup for 1 day on destination
-        $myCommandExtension="CASE BackupType WHEN 'L' THEN 2 WHEN 'D' THEN 1 WHEN 'I' THEN 1 ELSE 1 END"
+        $myCommandExtension=$this.Get_ShippedBackupsCatalogItemDeleteDate_CustomeRule01(2,1,1,1)
     } elseif ((IsNumeric -Value $this.RetainDaysOnDestination) -eq $true) {
         #Keep files for (RetainDaysOnDestination) days on destination
         $myCommandExtension=$this.RetainDaysOnDestination
@@ -570,6 +589,7 @@ hidden [void]Set_ShippedBackupsCatalogItemDeleteDate(){
         AND [InstanceName] = @myInstanceName
     "
     try{
+        Write-Verbose $myCommand
         Invoke-Sqlcmd -ConnectionString $this.LogWriter.LogInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
         $myAnswer=$true
     }Catch{
@@ -579,6 +599,14 @@ hidden [void]Set_ShippedBackupsCatalogItemDeleteDate(){
     }
     #if ($null -ne $myRecord) {return $myAnswer=$true}
     #retrun $myAnswer
+}
+hidden [string]Get_ShippedBackupsCatalogItemDeleteDate_CustomeRule01 ([int]$LogBackupRetainDays,[int]$DifferentialBackupRetainDays,[int]$FullBackupRetainDays,[int]$DefaultBackupRetainDays){   #This rule set backup file retain days on destination according to backup file type, you can use any field of Catalog backup table ro create any other custom rulse
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
+    [string]$myAnswer=$null
+
+    $myAnswer="CASE BackupType WHEN 'L' THEN "+ $LogBackupRetainDays.ToString() +" WHEN 'D' THEN "+ $FullBackupRetainDays.ToString() +" WHEN 'I' THEN "+ $DifferentialBackupRetainDays.ToString() +" ELSE "+ $DefaultBackupRetainDays.ToString() +" END"
+    if (-Verbose) {$this.LogWriter.Write($this.LogStaticMessage+$myAnswer,[LogType]::INF)}
+    return $myAnswer
 }
 hidden [void]Set_BackupsCatalogItemAsShippedOnMsdb([BackupFile]$BackupFile) {
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
@@ -604,6 +632,7 @@ hidden [void]Set_BackupsCatalogItemAsShippedOnMsdb([BackupFile]$BackupFile) {
         AND [description] NOT LIKE '%'+@TransferedSuffix + '%'
     "
     try{
+        Write-Verbose $myCommand
         Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
     }Catch{
         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
@@ -1143,7 +1172,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
     $myCommand="
     DECLARE @myCurrentDateTime DATETIME;
     DECLARE @HoursToScanForUntransferredBackups INT;
-    DECLARE @TransferedSuffix NVARCHAR(20);
+    DECLARE @TransferedSuffix NVARCHAR(50);
     
     SET @myCurrentDateTime = GETDATE();
     SET @HoursToScanForUntransferredBackups = -1*ABS("+ $HoursToScanForUntransferredBackups.ToString() +");
@@ -1201,7 +1230,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         [myMediaSet].[media_set_id] ASC;
     "
     try{
-        #$this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
+        Write-Verbose $myCommand
         $this.LogWriter.Write($this.LogStaticMessage+'Retrive list of unsent backup files.',[LogType]::INF)
         [System.Data.DataRow[]]$myRecords=$null
         $myRecords=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
