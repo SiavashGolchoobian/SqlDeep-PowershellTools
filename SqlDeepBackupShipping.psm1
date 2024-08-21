@@ -605,7 +605,7 @@ hidden [string]Get_ShippedBackupsCatalogItemDeleteDate_CustomeRule01 ([int]$LogB
     [string]$myAnswer=$null
 
     $myAnswer="CASE BackupType WHEN 'L' THEN "+ $LogBackupRetainDays.ToString() +" WHEN 'D' THEN "+ $FullBackupRetainDays.ToString() +" WHEN 'I' THEN "+ $DifferentialBackupRetainDays.ToString() +" ELSE "+ $DefaultBackupRetainDays.ToString() +" END"
-    if (-Verbose) {$this.LogWriter.Write($this.LogStaticMessage+$myAnswer,[LogType]::INF)}
+    Write-Verbose $myAnswer
     return $myAnswer
 }
 hidden [void]Set_BackupsCatalogItemAsShippedOnMsdb([BackupFile]$BackupFile) {
@@ -1325,7 +1325,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
         #--=======================Create folder structure in destination
         $this.LogWriter.Write($this.LogStaticMessage+'Create folder structure on destination ' + $this.Destination + ' With path structure of ' + $this.DestinationFolderStructure,[LogType]::INF)
         $this.LogWriter.Write($this.LogStaticMessage+'Extract unique folder list.',[LogType]::INF)
-        $myFolderList = $myUntransferredBackups | Select-Object -Property DestinationFolder -Unique
+        $myFolderList = @($myUntransferredBackups | Select-Object -Property DestinationFolder -Unique)
 
         $this.LogWriter.Write($this.LogStaticMessage+'Try to create folders.',[LogType]::INF)
         switch ($this.DestinationType) 
