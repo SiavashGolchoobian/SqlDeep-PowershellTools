@@ -7,22 +7,22 @@ Class ConnectionSpecification{
     [string]$ClientIpPattern
 
     ConnectionSpecification ([string]$LoginName){
-        $this.Init($LoginName,$null,"%","%")
+        $this.Init($LoginName,$null,'%','%')
     }
     ConnectionSpecification ([string]$LoginName,[string]$PersonnelIdentification,[string]$ClientNamePattern){
-        $this.Init($LoginName,$PersonnelIdentification,$ClientNamePattern,"%")
+        $this.Init($LoginName,$PersonnelIdentification,$ClientNamePattern,'%')
     }
     ConnectionSpecification ([string]$LoginName,[string]$PersonnelIdentification,[string]$ClientNamePattern,[string]$ClientIpPattern){
         $this.Init($LoginName,$PersonnelIdentification,$ClientNamePattern,$ClientIpPattern)
     }
     hidden Init([string]$LoginName,[string]$PersonnelIdentification,[string]$ClientNamePattern,[string]$ClientIpPattern){
-        [string]$myPersonnelIdentification=""
-        [string]$myClientNamePattern="%"
-        [string]$myClientIpPattern="%"
+        [string]$myPersonnelIdentification=''
+        [string]$myClientNamePattern='%'
+        [string]$myClientIpPattern='%'
         
-        if ($null -ne $PersonnelIdentification -and $PersonnelIdentification.Trim().Length -eq 0){$myPersonnelIdentification=""}else{$myPersonnelIdentification=$PersonnelIdentification.Trim().ToUpper()}
-        if ($null -ne $ClientNamePattern -and $ClientNamePattern.Trim().Length -eq 0){$myClientNamePattern="%"}else{$myClientNamePattern=$ClientNamePattern.Trim().ToUpper()}
-        if ($null -ne $ClientIpPattern -and $ClientIpPattern.Trim().Length -eq 0){$myClientIpPattern="%"}else{$myClientIpPattern=$ClientIpPattern.Trim().ToUpper()}
+        if ($null -ne $PersonnelIdentification -and $PersonnelIdentification.Trim().Length -eq 0){$myPersonnelIdentification=''}else{$myPersonnelIdentification=$PersonnelIdentification.Trim().ToUpper()}
+        if ($null -ne $ClientNamePattern -and $ClientNamePattern.Trim().Length -eq 0){$myClientNamePattern='%'}else{$myClientNamePattern=$ClientNamePattern.Trim().ToUpper()}
+        if ($null -ne $ClientIpPattern -and $ClientIpPattern.Trim().Length -eq 0){$myClientIpPattern='%'}else{$myClientIpPattern=$ClientIpPattern.Trim().ToUpper()}
         $this.LoginName=$LoginName.Trim().ToUpper()
         $this.PersonnelIdentification=$myPersonnelIdentification
         $this.ClientNamePattern=$myClientNamePattern
@@ -96,7 +96,7 @@ Class SqlSysAdminAudit{
 
     #region Functions
     hidden [void]CollectEvents(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         [string]$myNonAdminLoginsQuery = "
             --Get Windows Group Logins/members
             SET NOCOUNT ON;
@@ -145,14 +145,14 @@ Class SqlSysAdminAudit{
             DROP TABLE #myDomainGroupMembers 
         "
         try{
-            $this.LogWriter.Write("Extract relative Windows Events.",[LogType]::INF)
+            $this.LogWriter.Write('Extract relative Windows Events.',[LogType]::INF)
             $this.ScanStartTime=(Get-Date).AddMinutes((-1*[Math]::Abs($this.LimitEventLogScanToRecentMinutes)));
             [System.Data.DataRow[]]$myNonAdmins=$null
             [System.Collections.ArrayList]$mySecurityEventCollection=$null
             $mySecurityEventCollection=[System.Collections.ArrayList]::new()
-            $this.LogWriter.Write("Specify sql server non-admin logins.",[LogType]::INF)
+            $this.LogWriter.Write('Specify sql server non-admin logins.',[LogType]::INF)
             $myNonAdmins = Invoke-Sqlcmd -ConnectionString ($this.CurrentInstanceConnectionString) -Query $myNonAdminLoginsQuery -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-            $this.LogWriter.Write(("Retrive only admin logins from Windows Events from " + $this.ScanStartTime.ToString() + " through " + (Get-Date).ToString()),[LogType]::INF)
+            $this.LogWriter.Write(('Retrive only admin logins from Windows Events from ' + $this.ScanStartTime.ToString() + ' through ' + (Get-Date).ToString()),[LogType]::INF)
             $myEvents = (Get-WinEvent -FilterHashtable @{
                 LogName='Application'
                 ProviderName='MSSQL$NODE'
@@ -166,20 +166,20 @@ Class SqlSysAdminAudit{
                 )
             if ($null -ne $myEvents) {
                 $this.SecurityEvents=$mySecurityEventCollection.ToArray([SecurityEvent])
-                $this.LogWriter.Write("There is "+ $this.SecurityEvents.Count.ToString()+" Admin login events found in Windows Events.",[LogType]::INF)
+                $this.LogWriter.Write('There is '+ $this.SecurityEvents.Count.ToString()+' Admin login events found in Windows Events.',[LogType]::INF)
             } else {
-                $this.LogWriter.Write("There is no Admin login event found in Windows Events.",[LogType]::INF)
+                $this.LogWriter.Write('There is no Admin login event found in Windows Events.',[LogType]::INF)
             }
-            $this.LogWriter.Write("Admin logins retrived from Windows Events.",[LogType]::INF)
+            $this.LogWriter.Write('Admin logins retrived from Windows Events.',[LogType]::INF)
         }Catch{
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
             $this.SecurityEvents.Clear()
         }
     }
     hidden [void]SaveEvents(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         if ($null -ne $this.SecurityEvents -and $this.SecurityEvents.Count -gt 0) {
-            $this.LogWriter.Write("Insert Security Events into SQL table.",[LogType]::INF)
+            $this.LogWriter.Write('Insert Security Events into SQL table.',[LogType]::INF)
             ForEach ($myEvent in $this.SecurityEvents) {
                 [string]$myInserEventCommand="
                 USE [Tempdb];
@@ -211,13 +211,13 @@ Class SqlSysAdminAudit{
                 }
             }
         }else{
-            $this.LogWriter.Write("Insert Security Events into SQL table: there is nothing",[LogType]::INF)
+            $this.LogWriter.Write('Insert Security Events into SQL table: there is nothing',[LogType]::INF)
         }
     }
     hidden [void]CleanEvents(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         if ($null -ne $this.SecurityEvents -and $this.SecurityEvents.Count -gt 0) {
-            $this.LogWriter.Write("Clean old events from temporary table.",[LogType]::INF)
+            $this.LogWriter.Write('Clean old events from temporary table.',[LogType]::INF)
             [string]$myValidateEventCommand="
                 DECLARE @BatchInsertTime DateTime;
                 DECLARE @myInstance nvarchar(256);
@@ -227,29 +227,29 @@ Class SqlSysAdminAudit{
                 DELETE [dbo].[SqlLoginRecords] WHERE [Instance]=@myInstance AND [BatchInsertTime] < @BatchInsertTime;
                 "
             Invoke-Sqlcmd -ConnectionString $this.CentralTempInstanceConnectionString -Query $myValidateEventCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
-            $this.LogWriter.Write("Events cleaned.",[LogType]::INF)
+            $this.LogWriter.Write('Events cleaned.',[LogType]::INF)
         }else{
-            $this.LogWriter.Write("Clean old events from temporary table: There is nothing",[LogType]::INF)
+            $this.LogWriter.Write('Clean old events from temporary table: There is nothing',[LogType]::INF)
         }
     }
     hidden [void]AnalyzeSavedEvents(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         if ($null -ne $this.SecurityEvents -and $this.SecurityEvents.Count -gt 0) {
-            $this.LogWriter.Write("Analyze saved security events", [LogType]::INF)
-            [string]$myKnownListCommand=""
-            [string]$myAnalyzeEventCommand=""
+            $this.LogWriter.Write('Analyze saved security events', [LogType]::INF)
+            [string]$myKnownListCommand=''
+            [string]$myAnalyzeEventCommand=''
             [string]$myEventSource=$this.SecurityEvents[0].Instance
             
-            $this.LogWriter.Write(("Detected event source is " + $myEventSource),[LogType]::INF)
+            $this.LogWriter.Write(('Detected event source is ' + $myEventSource),[LogType]::INF)
             if($null -ne $this.AllowedUserConnections -and $this.AllowedUserConnections.Count -gt 0){
-                $this.LogWriter.Write(("There is " + $this.AllowedUserConnections.Count.ToString() + " AllowedUsers specified."),[LogType]::INF)
-                $myKnownListCommand="INSERT INTO @myKnownList ([Login],[PersonelID],[ClientName]) VALUES "
+                $this.LogWriter.Write(('There is ' + $this.AllowedUserConnections.Count.ToString() + ' AllowedUsers specified.'),[LogType]::INF)
+                $myKnownListCommand='INSERT INTO @myKnownList ([Login],[PersonelID],[ClientName]) VALUES '
                 foreach ($myConnection in $this.AllowedUserConnections){
-                    $myKnownListCommand+=$myConnection.ToSqlSysAdminAuditString()+","
+                    $myKnownListCommand+=$myConnection.ToSqlSysAdminAuditString()+','
                 }
-                if ($myKnownListCommand[-1] -eq ","){$myKnownListCommand=$myKnownListCommand.Substring(0,$myKnownListCommand.Length-1)} else {$myKnownListCommand=""}
+                if ($myKnownListCommand[-1] -eq ','){$myKnownListCommand=$myKnownListCommand.Substring(0,$myKnownListCommand.Length-1)} else {$myKnownListCommand=''}
             }else{
-                $this.LogWriter.Write(("There is not any AllowedUsers specified."),[LogType]::INF)
+                $this.LogWriter.Write(('There is not any AllowedUsers specified.'),[LogType]::INF)
             }
 
             $myAnalyzeEventCommand="
@@ -337,27 +337,27 @@ Class SqlSysAdminAudit{
                 "
             try{
                 [System.Data.DataRow[]]$myRecords=$null
-                $this.LogWriter.Write("Executing query to detect login attemts in unusual times.",[LogType]::INF)
+                $this.LogWriter.Write('Executing query to detect login attemts in unusual times.',[LogType]::INF)
                 $myRecords=Invoke-Sqlcmd -ConnectionString $this.CentralTempInstanceConnectionString -Query $myAnalyzeEventCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-                $this.LogWriter.Write("Query to detect login attemts in unusual times executed.",[LogType]::INF)
+                $this.LogWriter.Write('Query to detect login attemts in unusual times executed.',[LogType]::INF)
                 if ($null -ne $myRecords){
-                    $this.LogWriter.Write("There is "+ $myRecords.Count.ToString()+" Alarms found.",[LogType]::INF)
-                    $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module ($this.LogWriter.Module + ":LoginAlarm") -LogToConsole ($this.LogWriter.LogToConsole) -LogToFile ($this.LogWriter.LogToFile) -LogFilePath ($this.LogWriter.LogFilePath) -LogToTable ($this.LogWriter.LogToTable) -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName (($this.LogWriter.LogTableName))
+                    $this.LogWriter.Write('There is '+ $myRecords.Count.ToString()+' Alarms found.',[LogType]::INF)
+                    $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module ($this.LogWriter.Module + ':LoginAlarm') -LogToConsole ($this.LogWriter.LogToConsole) -LogToFile ($this.LogWriter.LogToFile) -LogFilePath ($this.LogWriter.LogFilePath) -LogToTable ($this.LogWriter.LogToTable) -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName (($this.LogWriter.LogTableName))
                     foreach ($myRecord in $myRecords){
                         $myAlarmWriter.Write($myRecord.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
                     }
                 }else{
-                    $this.LogWriter.Write("There is no Alarms found.",[LogType]::INF)
+                    $this.LogWriter.Write('There is no Alarms found.',[LogType]::INF)
                 }
             }catch{
                 $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
             }
         } ELSE {
-            Write-Host "Analyze Event Logs: There is nothing"
+            Write-Host 'Analyze Event Logs: There is nothing'
         }
     }
     [void] EnableSqlLoginAudit(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         [string]$myCommand="
         USE [master];
         CREATE SERVER AUDIT [SqlDeep_TrackLogins] TO APPLICATION_LOG WITH (QUEUE_DELAY = 1000, ON_FAILURE = CONTINUE);
@@ -374,9 +374,9 @@ Class SqlSysAdminAudit{
         ALTER SERVER AUDIT SqlDeep_TrackLogins WITH (STATE = ON);
         "
         try{
-            $this.LogWriter.Write("Enabling SqlDeep_TrackLogins extended event on SQL Server instance.",[LogType]::INF)
+            $this.LogWriter.Write('Enabling SqlDeep_TrackLogins extended event on SQL Server instance.',[LogType]::INF)
             Invoke-Sqlcmd -ConnectionString $this.CurrentInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
-            $this.LogWriter.Write("SqlDeep_TrackLogins extended event enabled.",[LogType]::INF)
+            $this.LogWriter.Write('SqlDeep_TrackLogins extended event enabled.',[LogType]::INF)
         }catch{
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
         }
@@ -384,8 +384,8 @@ Class SqlSysAdminAudit{
     [void] AnalyzeEvents(){
         try {
             #--=======================Initial Log Modules
-            Write-Verbose ("===== SqlSysAdminAudit process started. =====")
-            $this.LogWriter.Write("===== SqlSysAdminAudit process started... ===== ", [LogType]::INF) 
+            Write-Verbose ('===== SqlSysAdminAudit process started. =====')
+            $this.LogWriter.Write('===== SqlSysAdminAudit process started... ===== ', [LogType]::INF) 
             $this.CollectEvents()       #-----Retrive Successful Logins
             $this.SaveEvents()          #-----Insert Event Logs to a table
             $this.CleanEvents()         #-----Clean Event old Logs
@@ -394,9 +394,9 @@ Class SqlSysAdminAudit{
             Write-Error ($_.ToString())
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
         }finally{
-            Write-Verbose ("===== SqlSysAdminAudit finished. =====")
+            Write-Verbose ('===== SqlSysAdminAudit finished. =====')
         }
-        $this.LogWriter.Write("===== SqlSysAdminAudit process finished. ===== ", [LogType]::INF) 
+        $this.LogWriter.Write('===== SqlSysAdminAudit process finished. ===== ', [LogType]::INF) 
     }
     #endregion
 }
@@ -425,13 +425,13 @@ Class OsLoginAudit{
     }
     #region Functions
     hidden [void]CollectEvents(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         try{
-            $this.LogWriter.Write("Extract OS login Windows Events.",[LogType]::INF)
+            $this.LogWriter.Write('Extract OS login Windows Events.',[LogType]::INF)
             $this.ScanStartTime=(Get-Date).AddMinutes((-1*[Math]::Abs($this.LimitEventLogScanToRecentMinutes)));
             [System.Collections.ArrayList]$mySecurityEventCollection=$null
             $mySecurityEventCollection=[System.Collections.ArrayList]::new()
-            $this.LogWriter.Write(("Retrive only OS logins from Windows Events from " + $this.ScanStartTime.ToString() + " through " + (Get-Date).ToString()),[LogType]::INF)
+            $this.LogWriter.Write(('Retrive only OS logins from Windows Events from ' + $this.ScanStartTime.ToString() + ' through ' + (Get-Date).ToString()),[LogType]::INF)
             $myEvents = (Get-WinEvent -FilterHashtable @{
                 LogName='Security'
                 ProviderName='Microsoft-Windows-Security-Auditing'
@@ -441,12 +441,12 @@ Class OsLoginAudit{
                 | ForEach-Object {$mySecurityEventCollection.Add([SecurityEvent]::New($_.TimeCreated,$matches['login'].Trim().ToUpper(),$_.MachineName.Trim().ToUpper(),$_.Properties.Value[11].Trim().ToUpper(),$_.Properties.Value[18].Trim().ToUpper(),$_.Properties.Value[6].Trim().ToUpper(),$matches['type'].Trim().ToUpper(),$matches['impersonation_level'].Trim().ToUpper()))}
                 )
             if ($null -ne $myEvents) {
-                $this.SecurityEvents=$mySecurityEventCollection.ToArray([SecurityEvent]) | Where-Object {($_.DomainName.LastIndexOf(".") -ne -1 -and ($_.DomainName.Substring(0,$_.DomainName.LastIndexOf(".")) +"\"+$_.LoginName) -notin $this.AllowedServiceConnections) -or ($_.DomainName.LastIndexOf(".") -eq -1 -and ($_.DomainName+"\"+$_.LoginName) -notin $this.AllowedServiceConnections)}
-                $this.LogWriter.Write("There is "+ $this.SecurityEvents.Count.ToString()+" disallowed OS login events found in Windows Events.",[LogType]::INF)
+                $this.SecurityEvents=$mySecurityEventCollection.ToArray([SecurityEvent]) | Where-Object {($_.DomainName.LastIndexOf('.') -ne -1 -and ($_.DomainName.Substring(0,$_.DomainName.LastIndexOf('.')) +'\'+$_.LoginName) -notin $this.AllowedServiceConnections) -or ($_.DomainName.LastIndexOf('.') -eq -1 -and ($_.DomainName+'\'+$_.LoginName) -notin $this.AllowedServiceConnections)}
+                $this.LogWriter.Write('There is '+ $this.SecurityEvents.Count.ToString()+' disallowed OS login events found in Windows Events.',[LogType]::INF)
             } else {
-                $this.LogWriter.Write("There is no OS login event found in Windows Events.",[LogType]::INF)
+                $this.LogWriter.Write('There is no OS login event found in Windows Events.',[LogType]::INF)
             }
-            $this.LogWriter.Write("OS logins retrived from Windows Events.",[LogType]::INF)
+            $this.LogWriter.Write('OS logins retrived from Windows Events.',[LogType]::INF)
         }Catch{
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
             $this.SecurityEvents.Clear()
@@ -454,9 +454,9 @@ Class OsLoginAudit{
     
     }
     hidden [void]SaveEvents(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         if ($null -ne $this.SecurityEvents -and $this.SecurityEvents.Count -gt 0) {
-            $this.LogWriter.Write("Insert Security Events into SQL table.",[LogType]::INF)
+            $this.LogWriter.Write('Insert Security Events into SQL table.',[LogType]::INF)
             ForEach ($myEvent in $this.SecurityEvents) {
                 [string]$myInserEventCommand="
                 USE [Tempdb];
@@ -496,13 +496,13 @@ Class OsLoginAudit{
                 }
             }
         }else{
-            $this.LogWriter.Write("Insert Security Events into SQL table: there is nothing",[LogType]::INF)
+            $this.LogWriter.Write('Insert Security Events into SQL table: there is nothing',[LogType]::INF)
         }
     }
     hidden [void]CleanEvents(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         if ($null -ne $this.SecurityEvents -and $this.SecurityEvents.Count -gt 0) {
-            $this.LogWriter.Write("Clean old events from temporary table.",[LogType]::INF)
+            $this.LogWriter.Write('Clean old events from temporary table.',[LogType]::INF)
             [string]$myValidateEventCommand="
                 DECLARE @BatchInsertTime DateTime;
                 DECLARE @myInstance nvarchar(256);
@@ -512,29 +512,29 @@ Class OsLoginAudit{
                 DELETE [dbo].[WinLoginRecords] WHERE [Instance]=@myInstance AND [BatchInsertTime] < @BatchInsertTime;
                 "
             Invoke-Sqlcmd -ConnectionString $this.CentralTempInstanceConnectionString -Query $myValidateEventCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
-            $this.LogWriter.Write("Events cleaned.",[LogType]::INF)
+            $this.LogWriter.Write('Events cleaned.',[LogType]::INF)
         }else{
-            $this.LogWriter.Write("Clean old events from temporary table: There is nothing",[LogType]::INF)
+            $this.LogWriter.Write('Clean old events from temporary table: There is nothing',[LogType]::INF)
         }
     }
     hidden [void]AnalyzeSavedEvents(){
-        $this.LogWriter.Write("Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write('Processing Started.', [LogType]::INF)
         if ($null -ne $this.SecurityEvents -and $this.SecurityEvents.Count -gt 0) {
-            $this.LogWriter.Write("Analyze saved security events", [LogType]::INF)
-            [string]$myKnownListCommand=""
-            [string]$myAnalyzeEventCommand=""
+            $this.LogWriter.Write('Analyze saved security events', [LogType]::INF)
+            [string]$myKnownListCommand=''
+            [string]$myAnalyzeEventCommand=''
             [string]$myEventSource=$this.SecurityEvents[0].Instance
             
-            $this.LogWriter.Write(("Detected event source is " + $myEventSource),[LogType]::INF)
+            $this.LogWriter.Write(('Detected event source is ' + $myEventSource),[LogType]::INF)
             if($null -ne $this.AllowedUserConnections -and $this.AllowedUserConnections.Count -gt 0){
-                $this.LogWriter.Write(("There is " + $this.AllowedUserConnections.Count.ToString() + " AllowedUsers specified."),[LogType]::INF)
-                $myKnownListCommand="INSERT INTO @myKnownList ([Login],[PersonelID],[ClientName],[ClientIp]) VALUES "
+                $this.LogWriter.Write(('There is ' + $this.AllowedUserConnections.Count.ToString() + ' AllowedUsers specified.'),[LogType]::INF)
+                $myKnownListCommand='INSERT INTO @myKnownList ([Login],[PersonelID],[ClientName],[ClientIp]) VALUES '
                 foreach ($myConnection in $this.AllowedUserConnections){
-                    $myKnownListCommand+=$myConnection.ToOsLoginAuditString()+","
+                    $myKnownListCommand+=$myConnection.ToOsLoginAuditString()+','
                 }
-                if ($myKnownListCommand[-1] -eq ","){$myKnownListCommand=$myKnownListCommand.Substring(0,$myKnownListCommand.Length-1)} else {$myKnownListCommand=""}
+                if ($myKnownListCommand[-1] -eq ','){$myKnownListCommand=$myKnownListCommand.Substring(0,$myKnownListCommand.Length-1)} else {$myKnownListCommand=''}
             }else{
-                $this.LogWriter.Write(("There is not any AllowedUsers specified."),[LogType]::INF)
+                $this.LogWriter.Write(('There is not any AllowedUsers specified.'),[LogType]::INF)
             }
 
             $myAnalyzeEventCommand="
@@ -630,30 +630,30 @@ Class OsLoginAudit{
                 "
             try{
                 [System.Data.DataRow[]]$myRecords=$null
-                $this.LogWriter.Write("Executing query to detect login attemts in unusual times.",[LogType]::INF)
+                $this.LogWriter.Write('Executing query to detect login attemts in unusual times.',[LogType]::INF)
                 $myRecords=Invoke-Sqlcmd -ConnectionString $this.CentralTempInstanceConnectionString -Query $myAnalyzeEventCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
-                $this.LogWriter.Write("Query to detect login attemts in unusual times executed.",[LogType]::INF)
+                $this.LogWriter.Write('Query to detect login attemts in unusual times executed.',[LogType]::INF)
                 if ($null -ne $myRecords){
-                    $this.LogWriter.Write("There is "+ $myRecords.Count.ToString()+" Alarms found.",[LogType]::INF)
-                    $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module ($this.LogWriter.Module + ":LoginAlarm") -LogToConsole ($this.LogWriter.LogToConsole) -LogToFile ($this.LogWriter.LogToFile) -LogFilePath ($this.LogWriter.LogFilePath) -LogToTable ($this.LogWriter.LogToTable) -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName (($this.LogWriter.LogTableName))
+                    $this.LogWriter.Write('There is '+ $myRecords.Count.ToString()+' Alarms found.',[LogType]::INF)
+                    $myAlarmWriter=New-LogWriter -EventSource ($myEventSource) -Module ($this.LogWriter.Module + ':LoginAlarm') -LogToConsole ($this.LogWriter.LogToConsole) -LogToFile ($this.LogWriter.LogToFile) -LogFilePath ($this.LogWriter.LogFilePath) -LogToTable ($this.LogWriter.LogToTable) -LogInstanceConnectionString ($this.LogInstanceConnectionString) -LogTableName (($this.LogWriter.LogTableName))
                     foreach ($myRecord in $myRecords){
                         $myAlarmWriter.Write($myRecord.Description, [LogType]::WRN, $false, $true, $myRecord.EventTimeStamp.ToString())
                     }
                 }else{
-                    $this.LogWriter.Write("There is no Alarms found.",[LogType]::INF)
+                    $this.LogWriter.Write('There is no Alarms found.',[LogType]::INF)
                 }
             }catch{
                 $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
             }
         } ELSE {
-            Write-Host "Analyze Event Logs: There is nothing"
+            Write-Host 'Analyze Event Logs: There is nothing'
         }
     }
     [void] AnalyzeEvents(){
         try {
             #--=======================Initial Log Modules
-            Write-Verbose ("===== OsLoginAudit process started. =====")
-            $this.LogWriter.Write("===== OsLoginAudit process started... ===== ", [LogType]::INF) 
+            Write-Verbose ('===== OsLoginAudit process started. =====')
+            $this.LogWriter.Write('===== OsLoginAudit process started... ===== ', [LogType]::INF) 
             $this.CollectEvents()       #-----Retrive Successful Logins
             $this.SaveEvents()          #-----Insert Event Logs to a table
             $this.CleanEvents()         #-----Clean Event old Logs
@@ -662,9 +662,9 @@ Class OsLoginAudit{
             Write-Error ($_.ToString())
             $this.LogWriter.Write(($_.ToString()).ToString(), [LogType]::ERR)
         }finally{
-            Write-Verbose ("===== OsLoginAudit finished. =====")
+            Write-Verbose ('===== OsLoginAudit finished. =====')
         }
-        $this.LogWriter.Write("===== OsLoginAudit process finished. ===== ", [LogType]::INF) 
+        $this.LogWriter.Write('===== OsLoginAudit process finished. ===== ', [LogType]::INF) 
     }
     #endregion
 }
@@ -678,7 +678,7 @@ Function New-SqlSysAdminAudit {
         [Parameter(Mandatory=$true)][ConnectionSpecification[]]$AllowedServiceConnections,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
-    Write-Verbose "Creating New-SqlSysAdminAudit"
+    Write-Verbose 'Creating New-SqlSysAdminAudit'
     [int]$myLimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
     [string]$myCentralTempInstanceConnectionString=$CentralTempInstanceConnectionString
     [string]$myCurrentInstanceConnectionString=$CurrentInstanceConnectionString
@@ -686,7 +686,7 @@ Function New-SqlSysAdminAudit {
     [ConnectionSpecification[]]$myAllowedServiceConnections=$AllowedServiceConnections
     [LogWriter]$myLogWriter=$LogWriter
     [SqlSysAdminAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myCurrentInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogWriter)
-    Write-Verbose "New-SqlSysAdminAudit Created"
+    Write-Verbose 'New-SqlSysAdminAudit Created'
 }
 Function New-SqlSysAdminAuditByJsonConnSpec {
     Param(
@@ -697,7 +697,7 @@ Function New-SqlSysAdminAuditByJsonConnSpec {
         [Parameter(Mandatory=$true)][string]$AllowedServiceConnectionsJson,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
-    Write-Verbose "Creating New-SqlSysAdminAuditByJsonConnSpec"
+    Write-Verbose 'Creating New-SqlSysAdminAuditByJsonConnSpec'
     [int]$myLimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
     [string]$myCentralTempInstanceConnectionString=$CentralTempInstanceConnectionString
     [string]$myCurrentInstanceConnectionString=$CurrentInstanceConnectionString
@@ -727,7 +727,7 @@ Function New-SqlSysAdminAuditByJsonConnSpec {
     catch {
         Write-Verbose ($_.ToString())
     }
-    Write-Verbose "New-SqlSysAdminAuditByJsonConnSpec Created"
+    Write-Verbose 'New-SqlSysAdminAuditByJsonConnSpec Created'
     return $myAnswer
 }
 Function New-OsLoginAudit {
@@ -738,14 +738,14 @@ Function New-OsLoginAudit {
         [Parameter(Mandatory=$true)][ConnectionSpecification[]]$AllowedServiceConnections,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
-    Write-Verbose "Creating New-OsLoginAudit"
+    Write-Verbose 'Creating New-OsLoginAudit'
     [int]$myLimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
     [string]$myCentralTempInstanceConnectionString=$CentralTempInstanceConnectionString
     [ConnectionSpecification[]]$myAllowedUserConnections=$AllowedUserConnections
     [ConnectionSpecification[]]$myAllowedServiceConnections=$AllowedServiceConnections
     [LogWriter]$myLogWriter=$LogWriter
     [OsLoginAudit]::New($myLimitEventLogScanToRecentMinutes,$myCentralTempInstanceConnectionString,$myAllowedUserConnections,$myAllowedServiceConnections,$myLogWriter)
-    Write-Verbose "New-OsLoginAudit Created"
+    Write-Verbose 'New-OsLoginAudit Created'
 }
 Function New-OsLoginAuditByJsonConnSpec {
     Param(
@@ -755,7 +755,7 @@ Function New-OsLoginAuditByJsonConnSpec {
         [Parameter(Mandatory=$true)][string]$AllowedServiceConnectionsJson,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
-    Write-Verbose "Creating New-OsLoginAuditByJsonConnSpec"
+    Write-Verbose 'Creating New-OsLoginAuditByJsonConnSpec'
     [int]$myLimitEventLogScanToRecentMinutes=$LimitEventLogScanToRecentMinutes
     [string]$myCentralTempInstanceConnectionString=$CentralTempInstanceConnectionString
     [ConnectionSpecification[]]$myAllowedUserConnections=$null
@@ -784,7 +784,7 @@ Function New-OsLoginAuditByJsonConnSpec {
     catch {
         Write-Verbose ($_.ToString())
     }
-    Write-Verbose "New-OsLoginAuditByJsonConnSpec Created"
+    Write-Verbose 'New-OsLoginAuditByJsonConnSpec Created'
     return $myAnswer
 }
 #endregion
