@@ -60,7 +60,7 @@ Class BackupFile {
         $this.RemoteRepositoryUncFilePath=$this.CalcRemoteRepositoryUncFilePath($FileRepositoryUncPath)
     }
     hidden [string]CalcRemoteSourceFilePath([string]$Server) {    #Converting local path to UNC path
-        Write-Verbose "Processing Started."
+        Write-Verbose 'Processing Started.'
         [string]$myAnswer=$null
         if ($this.FilePath.Contains('\\') -eq $false) {
             $myUncPath='\\' + $Server + "\" + ($this.FilePath.Split(':') -Join '$')
@@ -71,7 +71,7 @@ Class BackupFile {
         return $myAnswer
     }
     hidden [string]CalcRemoteRepositoryUncFilePath ([string]$FileRepositoryUncPath) {    #Converting local path to Shared Repository UNC path
-        Write-Verbose "Processing Started."
+        Write-Verbose 'Processing Started.'
         [string]$myAnswer=$null
         $myAnswer=$FileRepositoryUncPath + "\" + ($this.FilePath.Split('\')[-1])
         return $myAnswer
@@ -113,11 +113,11 @@ Class DatabaseShipping {
         if ($this.LogWriter) {
             $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         } else {
-            Write-Verbose "Processing Started."
+            Write-Verbose 'Processing Started.'
         }
         [string]$myAnswer=$null
         $FolderPath=$FolderPath.Trim()
-        if ($FolderPath.ToCharArray()[-1] -eq "\") {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length)}    
+        if ($FolderPath.ToCharArray()[-1] -eq '\') {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length)}    
         $myAnswer=$FolderPath
         return $myAnswer
     }
@@ -1573,7 +1573,7 @@ Function New-DatabaseShipping {
         [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
-    Write-Verbose "Creating New-DatabaseShipping"
+    Write-Verbose 'Creating New-DatabaseShipping'
     [string]$mySourceInstanceConnectionString=$SourceInstanceConnectionString
     [string]$myDestinationInstanceConnectionString=$DestinationInstanceConnectionString
     [string]$myFileRepositoryUncPath=$FileRepositoryUncPath
@@ -1582,7 +1582,7 @@ Function New-DatabaseShipping {
     [DatabaseRecoveryMode]$myDestinationRestoreMode=$DestinationRestoreMode
     [LogWriter]$myLogWriter=$LogWriter
     [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentHours,$myRestoreFilesToIndividualFolders,$myDestinationRestoreMode,$myLogWriter)
-    Write-Verbose "New-DatabaseShipping Created"
+    Write-Verbose 'New-DatabaseShipping Created'
 }
 #endregion
 

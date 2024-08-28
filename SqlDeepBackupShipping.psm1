@@ -30,6 +30,59 @@ enum HostOperation {
     DIR
     ISALIVE
 }
+Class BackupCatalogItem {
+    [int]$Id
+    [string]$BatchUid
+    [datetime]$EventTimeStamp
+    [string]$Destination
+    [string]$DestinationFolder
+    [string]$UncBackupFilePath
+    [int]$MediaSetId
+    [int]$FamilySequenceNumber
+    [string]$ServerName
+    [string]$InstanceName
+    [string]$DatabaseName
+    [datetime]$BackupStartTime
+    [datetime]$BackupFinishTime
+    [datetime]$ExpirationDate
+    [string]$BackupType
+    [decimal]$FirstLsn
+    [decimal]$LastLsn
+    [string]$FileName
+    [string]$FilePath
+    [int]$MaxFamilySequenceNumber
+    [datetime]$DeleteDate
+    [bool]$IsDeleted
+    [string]$TransferStatus
+   
+    BackupCatalogItem([int]$Id,[string]$BatchUid,[datetime]$EventTimeStamp,[string]$Destination,[string]$DestinationFolder,[string]$UncBackupFilePath,[int]$MediaSetId,[int]$FamilySequenceNumber,[string]$ServerName,[string]$InstanceName,[string]$DatabaseName,[datetime]$BackupStartTime,[datetime]$BackupFinishTime,[datetime]$ExpirationDate,[string]$BackupType,[decimal]$FirstLsn,[decimal]$LastLsn,[string]$FilePath,[string]$FileName,[int]$MaxFamilySequenceNumber,[datetime]$DeleteDate,[bool]$IsDeleted,[string]$TransferStatus){
+        Write-Verbose 'BackupCatalogItem object initializing started'
+        $this.Id=$Id
+        $this.BatchUid=$BatchUid
+        $this.EventTimeStamp=$EventTimeStamp
+        $this.Destination=$Destination
+        $this.DestinationFolder=$DestinationFolder
+        $this.UncBackupFilePath=$UncBackupFilePath
+        $this.MediaSetId=$MediaSetId
+        $this.FamilySequenceNumber=$FamilySequenceNumber
+        $this.ServerName=$ServerName
+        $this.InstanceName=$InstanceName
+        $this.DatabaseName=$DatabaseName
+        $this.BackupStartTime=$BackupStartTime
+        $this.BackupFinishTime=$BackupFinishTime
+        $this.ExpirationDate=$ExpirationDate
+        $this.BackupType=$BackupType
+        $this.FirstLsn=$FirstLsn
+        $this.LastLsn=$LastLsn
+        $this.FilePath=$FilePath
+        $this.FileName=$FileName
+        $this.MaxFamilySequenceNumber=$MaxFamilySequenceNumber
+        $this.DeleteDate=$DeleteDate
+        $this.IsDeleted=$IsDeleted
+        $this.TransferStatus=$TransferStatus
+        Write-Verbose 'BackupCatalogItem object initialized'
+    }
+}
 Class BackupFile {
     [int]$FamilySequenceNumber
     [int]$MaxFamilySequenceNumber
@@ -304,6 +357,18 @@ Class BackupShipping {
         }
     }
 #region Functions
+hidden [string]Path_CorrectFolderPathFormat ([string]$FolderPath) {    #Correcting folder path format
+    if ($this.LogWriter) {
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+    } else {
+        Write-Verbose "Processing Started."
+    }
+    [string]$myAnswer=$null
+    $FolderPath=$FolderPath.Trim()
+    if ($FolderPath.ToCharArray()[-1] -eq '\') {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length)}    
+    $myAnswer=$FolderPath
+    return $myAnswer
+}
 hidden [bool]Create_ShippedBackupsCatalog() {   #Create Log Table to Write Logs of transfered files in a table, if not exists
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=[bool]$true
@@ -549,20 +614,22 @@ hidden [void]Set_ShippedBackupsCatalogItemDeleteDate(){
     [bool]$myAnswer=$true
     [PSCustomObject]$mySourceInstanceInfo=$null
     [string]$mySourceServerName=$null
+    [string]$mySourceInstanceName=$null
     [string]$myCommand=$null
     [string]$myCommandExtension=$null
 
     $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name.',[LogType]::INF)
     $mySourceInstanceInfo=Get-InstanceInformation -ConnectionString $this.SourceInstanceConnectionString -ShowRelatedInstanceOnly
     if ($mySourceInstanceInfo.PsObject.Properties.Name -eq 'MachineNameInstanceName') {
-        $mySourceServerName=$mySourceInstanceInfo.MachineNameInstanceName
+        $mySourceServerName=$mySourceInstanceInfo.MachineName
+        $mySourceInstanceName=$mySourceInstanceInfo.InstanceName
     } else {
         $this.LogWriter.Write($this.LogStaticMessage+'Get-InstanceInformation failure.', [LogType]::ERR) 
         throw ('Get-InstanceInformation failure.')
     }
-    if ($null -eq $mySourceServerName -or $mySourceServerName.Length -eq 0) {
-        $this.LogWriter.Write($this.LogStaticMessage+'Source server name is empty.',[LogType]::ERR)
-        throw 'Source server name is empty.'
+    if ($null -eq $mySourceServerName -or $null -eq $mySourceInstanceName -or $mySourceServerName.Length -eq 0 -or $mySourceInstanceName.Length -eq 0) {
+        $this.LogWriter.Write($this.LogStaticMessage+'Source server name and/or instance name is empty.',[LogType]::ERR)
+        throw 'Source server name and/or instance name is empty.'
     }
 
     $myCommandExtension=''
@@ -576,9 +643,11 @@ hidden [void]Set_ShippedBackupsCatalogItemDeleteDate(){
 
     $myCommand="
     DECLARE @myToday Datetime
+    DECLARE @myMachineName nvarchar(256)
     DECLARE @myInstanceName nvarchar(256)
     DECLARE @myRetainDaysOnDestination INT
-    SET @myInstanceName=N'"+$mySourceServerName+"'
+    SET @myMachineName=N'"+$mySourceServerName+"'
+    SET @myInstanceName=N'"+$mySourceInstanceName+"'
     SET @myToday=getdate()
     
     UPDATE [dbo].["+$this.BackupShippingCatalogTableName+"] SET 
@@ -586,6 +655,7 @@ hidden [void]Set_ShippedBackupsCatalogItemDeleteDate(){
     WHERE
         [DeleteDate] IS NULL
         AND [IsDeleted] = 0
+        AND [MachineName] = @myMachineName
         AND [InstanceName] = @myInstanceName
     "
     try{
@@ -607,6 +677,31 @@ hidden [string]Get_ShippedBackupsCatalogItemDeleteDate_CustomeRule01 ([int]$LogB
     $myAnswer="CASE BackupType WHEN 'L' THEN "+ $LogBackupRetainDays.ToString() +" WHEN 'D' THEN "+ $FullBackupRetainDays.ToString() +" WHEN 'I' THEN "+ $DifferentialBackupRetainDays.ToString() +" ELSE "+ $DefaultBackupRetainDays.ToString() +" END"
     Write-Verbose $myAnswer
     return $myAnswer
+}
+hidden [void]Set_ShippedBackupsCatalogItemDeleteFlag([BackupCatalogItem]$BackupCatalogItem) {
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
+    [bool]$myAnswer=$true
+    [string]$myCommand=$null
+
+    $myCommand="
+        DECLARE @myId BIGINT
+        SET @myId="+$BackupCatalogItem.Id.ToString()+"
+        
+        UPDATE [dbo].["+$this.BackupShippingCatalogTableName+"] SET 
+            IsDeleted = 1
+        WHERE
+            Id = @myId
+    "
+    try{
+        Write-Verbose $myCommand
+        Invoke-Sqlcmd -ConnectionString $this.LogWriter.LogInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+    }Catch{
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+        $this.LogWriter.Write($this.LogStaticMessage+$myCommand, [LogType]::ERR)
+        $myAnswer=$false
+    }
+    #if ($null -ne $myRecord) {$myAnswer=$true}
+    #return $myAnswer
 }
 hidden [void]Set_BackupsCatalogItemAsShippedOnMsdb([BackupFile]$BackupFile) {
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
@@ -715,6 +810,17 @@ hidden [bool]Operate_OverUnc([HostOperation]$Operation,[string]$SharedFolderPath
             $myAnswer=$false
         }
     }
+    elseif($Operation -eq [HostOperation]::DELETE)
+    {
+        try
+        {
+            $this.LogWriter.Write($this.LogStaticMessage+'Delete file from UNC address of ' + $DestinationPath, [LogType]::INF)
+            $myAnswer=$this.Operate_UNC_Delete($SharedFolderPath,$Credential,$TemporalDriveLetters[0],$DestinationPath)
+        }catch{
+            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+            $myAnswer=$false
+        }
+    }
     return $myAnswer
 }
 hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath,[string]$SshKeyFingerprint) {  #Do file operation to via winscp
@@ -811,7 +917,13 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                 if ($myAnswer -eq $true) {
                     foreach ($myTransfer in $myOperationResult.Transfers)
                     {
-                        $this.LogWriter.Write($this.LogStaticMessage+'Upload of ' + ($myTransfer.FileName) + ' succeeded.', [LogType]::INF)
+                        if ($mySession.FileExists($DestinationPath) -eq $true) {
+                            $this.LogWriter.Write($this.LogStaticMessage+'Upload of ' + ($myTransfer.FileName) + ' succeeded.', [LogType]::INF)
+                            $myAnswer=$true
+                        }else{
+                            $this.LogWriter.Write($this.LogStaticMessage+'Upload of ' + $SourceFilePath + ' to ' + $DestinationPath + ' failed, because file does not exists.', [LogType]::ERR)
+                            $myAnswer=$false
+                        }
                     }
                 }else{
                     $this.LogWriter.Write($this.LogStaticMessage+'Upload of ' + $SourceFilePath + ' to ' + $DestinationPath + ' failed.', [LogType]::ERR)
@@ -835,13 +947,19 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                 $mySession.Open($mySessionOptions)
         
                 # Download the file and throw on any error
-                $this.LogWriter.Write($this.LogStaticMessage+'Trying to download ' + $DestinationPath + ' into ' + $SourceFilePath, [LogType]::INF)
-                $myOperationResult = $mySession.GetFiles($DestinationPath,$SourceFilePath)
-                
-                # Throw error if found
-                #$myOperationResult.Check()
-                #$mySession.Output
-                $myAnswer=$myOperationResult.IsSuccess
+                $this.LogWriter.Write($this.LogStaticMessage+'Check file existence (' + $DestinationPath + ')', [LogType]::INF)
+                if ($mySession.FileExists($DestinationPath) -eq $true) {
+                    $this.LogWriter.Write($this.LogStaticMessage+'Trying to download ' + $DestinationPath + ' into ' + $SourceFilePath, [LogType]::INF)
+                    $myOperationResult = $mySession.GetFiles($DestinationPath,$SourceFilePath)
+                    # Throw error if found
+                    #$myOperationResult.Check()
+                    #$mySession.Output
+                    $myAnswer=$myOperationResult.IsSuccess
+                }else{
+                    $this.LogWriter.Write($this.LogStaticMessage+'Trying to download ' + $DestinationPath + ' but file does not exists.', [LogType]::INF)
+                    $myAnswer=$false
+                }
+
             }catch{
                 $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
                 $myAnswer=$false
@@ -918,9 +1036,48 @@ hidden [bool]Operate_OverWinScp([DestinationType]$DestinationType,[HostOperation
                 $mySession.Dispose()
             }  
         }
+        elseif($Operation -eq [HostOperation]::DELETE)
+        {
+            try
+            {
+                # Connect
+                $this.LogWriter.Write($this.LogStaticMessage+'Connect to session for Delete operation.', [LogType]::INF)
+                $mySession.Open($mySessionOptions)
+        
+                # Remove the file and throw on any error
+                $this.LogWriter.Write($this.LogStaticMessage+'Check file existence (' + $DestinationPath + ')', [LogType]::INF)
+                if ($mySession.FileExists($DestinationPath) -eq $true) {
+                    $this.LogWriter.Write($this.LogStaticMessage+'Trying to remove ' + $DestinationPath + ' file.', [LogType]::INF)
+                    $mySessionResult = $mySession.RemoveFiles($DestinationPath)
+
+                    $this.LogWriter.Write($this.LogStaticMessage+'Check file existence (' + $DestinationPath + ') after delete operation.', [LogType]::INF)
+                    if ($mySession.FileExists($DestinationPath) -eq $true) {
+                        $this.LogWriter.Write($this.LogStaticMessage+'File is exists and does not removed.', [LogType]::ERR)
+                        $myAnswer=$false    #file already exists and does not removed
+                    }else{
+                        $this.LogWriter.Write($this.LogStaticMessage+'File is removed.', [LogType]::INF)
+                        $myAnswer=$true     #file is removed
+                    }
+                    #$myAnswer=$mySessionResult.IsSuccess
+                    # Throw error if found
+                    #$mySession.Output
+                }else{
+                    $this.LogWriter.Write($this.LogStaticMessage+'Trying to remove ' + $DestinationPath + ' but file does not exists.', [LogType]::WRN)
+                    $myAnswer=$true     #file already removed
+                }
+            }catch{
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                $myAnswer=$false
+            }
+            finally
+            {
+                # Disconnect, clean up
+                $mySession.Dispose()
+            }    
+        }
         else 
         {
-            $this.LogWriter.Write($this.LogStaticMessage+'Operation not specified, it must be upload/download/list/dir/mkdir', [LogType]::WRN)
+            $this.LogWriter.Write($this.LogStaticMessage+'Operation not specified, it must be upload/download/list/dir/mkdir/delete', [LogType]::WRN)
         }
     }catch{
         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
@@ -1063,6 +1220,7 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
             $mySourceDriveLetter = $TemporalDriveLetters[1]
             $mySourceFilePathSections=$SourceFilePath.Split('\')
             $mySourceDriveURI='\\' + $mySourceFilePathSections[2] + '\' + $mySourceFilePathSections[3]
+            $this.LogWriter.Write($this.LogStaticMessage+'Comparing SourceDriveURI of ' + $mySourceDriveURI + ' with SharedFolderPath of ' + $SharedFolderPath, [LogType]::INF)
             if ($mySourceDriveURI.ToUpper() -ne $SharedFolderPath.ToUpper()) {
                 New-PSDrive -Name $mySourceDriveLetter -PSProvider filesystem -Root $mySourceDriveURI -Credential $myCredential
                 if ((Test-Path -Path ($mySourceDriveLetter+":") -PathType Container) -eq $false) {
@@ -1081,24 +1239,82 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
         }
  
         # Copy\Move file to destination UNC directory and throw on any error
-        $this.LogWriter.Write($this.LogStaticMessage+'Starting to uploaded (' + $ActionType + ') from ' + $SourceFilePath + '(' + $mySourceFilePath +') to ' + $myDestinationPath, [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+'Starting to uploaded (' + $ActionType + ') from ' + $SourceFilePath + ' (' + $mySourceFilePath +') to ' + $myDestinationPath, [LogType]::INF)
         switch ($ActionType) {
-            [ActionType]::COPY {Copy-Item -Path $mySourceFilePath -Destination $myDestinationPath -Force}
-            [ActionType]::MOVE {Move-Item -Path $mySourceFilePath -Destination $myDestinationPath -Force}
+            COPY {Copy-Item -Path $mySourceFilePath -Destination $myDestinationPath -Force}
+            MOVE {Move-Item -Path $mySourceFilePath -Destination $myDestinationPath -Force}
         }
  
+        $this.LogWriter.Write($this.LogStaticMessage+'Testing file path ' + $myDestinationPath + ' ...', [LogType]::INF)
         $myResult = Test-Path -PathType Leaf -Path $myDestinationPath
+
         if ($myResult) {
             $this.LogWriter.Write($this.LogStaticMessage+'New file uploaded (' + $ActionType + ") from " + $SourceFilePath + '(' + $mySourceFilePath +') to ' + $myDestinationPath, [LogType]::INF)
+            $myAnswer=$true
         }else{
             $this.LogWriter.Write($this.LogStaticMessage+'Failed to upload (' + $ActionType + ') from ' + $SourceFilePath + '(' + $mySourceFilePath +') to ' + $myDestinationPath, [LogType]::ERR)
+            $myAnswer=$false
         }
  
         Remove-PSDrive -Name ($TemporalDriveLetters[0])
         if ($SourceFilePath.Substring(0,2) -eq '\\') {Remove-PSDrive -Name ($TemporalDriveLetters[1])}
     }
     catch {
-        Write-Log -Type ERR -Content ($_.ToString()).ToString()
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+    }
+    return $myAnswer
+}
+hidden [bool]Operate_UNC_Delete([string]$SharedFolderPath,[System.Net.NetworkCredential]$Credential,[char]$TemporalDriveLetter,[string]$DestinationPath) {
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
+    [bool]$myAnswer=$false
+    [string]$myDestinationUser=$null
+    [string]$myDestinationPassword=$null
+    [securestring]$myDestinationSecurePassword=$null
+    [string]$myDestinationDriveLetter=$null
+    [string]$myDestinationPath=$null
+
+    try {
+        $myDestinationPassword = $Credential.Password
+        # Setup credential domain name prefix
+        if ($Credential.Domain.Trim().Length -eq 0){
+            $myDestinationUser=$Credential.UserName.Trim()
+        }else{
+            $myDestinationUser=$Credential.Domain.Trim()+'\'+$Credential.UserName.Trim()
+        }
+        $myDestinationSecurePassword = ConvertTo-SecureString $myDestinationPassword -AsPlainText -Force
+        $myCredential = New-Object System.Management.Automation.PSCredential ($myDestinationUser, $myDestinationSecurePassword)
+         
+        # Recalculate unc destination path
+        if($null -eq $TemporalDriveLetter){$TemporalDriveLetter='A'}
+        $myDestinationDriveLetter = $TemporalDriveLetter
+        $myDestinationPath=$myDestinationDriveLetter + ':\' + $DestinationPath
+        $this.LogWriter.Write($this.LogStaticMessage+'Try to create Drive Letter of ' + $myDestinationDriveLetter + ' on ' + $SharedFolderPath + ' with User ' + $myDestinationUser, [LogType]::INF)    
+        New-PSDrive -Name $myDestinationDriveLetter -PSProvider filesystem -Root $SharedFolderPath -Credential $myCredential
+        
+        if ((Test-Path -Path ($myDestinationDriveLetter+':') -PathType Container) -eq $false) {
+            $this.LogWriter.Write($this.LogStaticMessage+'Create Destination Drive Letter Error for ' + $myDestinationDriveLetter + ' defined on ' + $SharedFolderPath + ' as user ' + $myDestinationUser, [LogType]::ERR)
+            $myAnswer = $false
+            return $myAnswer
+        }
+ 
+        # Remove file from destination
+        $this.LogWriter.Write($this.LogStaticMessage+'Starting to delete ' + $myDestinationPath, [LogType]::INF)
+        Remove-Item -Path $myDestinationPath -Force
+ 
+        $this.LogWriter.Write($this.LogStaticMessage+'Testing file path ' + $myDestinationPath + ' ...', [LogType]::INF)
+        $myResult = Test-Path -PathType Leaf -Path $myDestinationPath
+        if ($myResult) {
+            $this.LogWriter.Write($this.LogStaticMessage+'File ' + $myDestinationPath + ' does not removed.', [LogType]::ERR)
+            $myAnswer=$false
+        }else{
+            $this.LogWriter.Write($this.LogStaticMessage+'File ' + $myDestinationPath + ' is removed.', [LogType]::INF)
+            $myAnswer=$true
+        }
+ 
+        Remove-PSDrive -Name ($TemporalDriveLetter)
+    }
+    catch {
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
     }
     return $myAnswer
 }
@@ -1110,8 +1326,10 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
     if(-not(Get-Module CredentialManager)){
         Import-Module CredentialManager
     }
-    $this.DestinationCredential=(Get-StoredCredential -Target $StoreCredentialName).GetNetworkCredential()
-    New-StoredCredential -Target StoredCredentialName -Type Generic -UserName $Credential.UserName -Password $Credential.Password -Persist LocalMachine
+    if (Get-StoredCredential -Target $StoreCredentialName) { #Remove any existed credential
+        Remove-StoredCredential -Target StoreCredentialName
+    }
+    New-StoredCredential -Target $StoreCredentialName -Type Generic -UserName $Credential.UserName -Password $Credential.Password -Persist LocalMachine
 }
 [void] Set_DestinationCredential([System.Net.NetworkCredential]$Credential){    #Retrive destination credential from input
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
@@ -1246,6 +1464,65 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
     }
     return $myAnswer
 }
+hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of deprecated  backup catalog items accordinf to DeleteDate
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
+    [BackupCatalogItem[]]$myAnswer=$null
+    [string]$myCommand=$null
+
+    $myCommand="
+    DECLARE @myToday Datetime
+    SET @myToday=getdate()
+    
+    SELECT
+        [Id],
+        [BatchId],
+        [EventTimeStamp],
+        [Destination],
+        [DestinationFolder],
+        [UncBackupFilePath],
+        [media_set_id],
+        [family_sequence_number],
+        [MachineName],
+        [InstanceName],
+        [DatabaseName],
+        [backup_start_date],
+        [backup_finish_date],
+        [expiration_date],
+        [BackupType],
+        [BackupFirstLSN],
+        [BackupLastLSN],
+        [BackupFilePath],
+        [BackupFileName],
+        [max_family_sequence_number],
+        [DeleteDate],
+        [IsDeleted],
+        [TransferStatus]
+    FROM 
+        [dbo].["+$this.BackupShippingCatalogTableName+"] AS myTransferLog
+    WHERE
+        myTransferLog.DeleteDate <= @myToday
+        AND myTransferLog.IsDeleted = 0
+        AND myTransferLog.TransferStatus = 'SUCCEED'
+    ORDER BY
+        Id
+"
+    try{
+        Write-Verbose $myCommand
+        $this.LogWriter.Write($this.LogStaticMessage+'Retrive list of delete backup candidate files.',[LogType]::INF)
+        [System.Data.DataRow[]]$myRecords=$null
+        $myRecords=Invoke-Sqlcmd -ConnectionString $this.LogWriter.LogInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+        if ($null -ne $myRecords){
+            [System.Collections.ArrayList]$myBackupCatalogCollection=$null
+            $myBackupCatalogCollection=[System.Collections.ArrayList]::new()
+            $myRecords|ForEach-Object{$myBackupCatalogCollection.Add([BackupCatalogItem]::New($_.Id,$_.BatchId,$_.EventTimeStamp,$_.Destination,$_.DestinationFolder,$_.UncBackupFilePath,$_.media_set_id,$_.family_sequence_number,$_.MachineName,$_.InstanceName,$_.DatabaseName,$_.backup_start_date,$_.backup_finish_date,$_.expiration_date,$_.BackupType,$_.BackupFirstLSN,$_.BackupLastLSN,$_.BackupFilePath,$_.BackupFileName,$_.max_family_sequence_number,$_.DeleteDate,$_.IsDeleted,$_.TransferStatus))}
+            $myAnswer=$myBackupCatalogCollection.ToArray([BackupCatalogItem])
+        }
+    }Catch{
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+        $myAnswer.Clear()
+    }
+    return $myAnswer
+}
 [void] Transfer_Backup(){  #Transfer Backup from source to destination
     try {
         #--=======================Initial ShipBackup Modules
@@ -1309,7 +1586,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
             FTP    {$this.Operate_OverFtp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null)}
             SFTP   {$this.Operate_OverSftp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null,$this.SshHostKeyFingerprint)}
             SCP    {$this.Operate_OverScp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null,$this.SshHostKeyFingerprint)}
-            UNC    {$this.Operate_OverUnc([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,'A')}
+            UNC    {$this.Operate_OverUnc([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,'A',$null,$null)}
         }
         if ($myDestinationIsAlive -eq $false){
             $this.LogWriter.Write($this.LogStaticMessage+'Destination is not avilable.', [LogType]::ERR) 
@@ -1333,8 +1610,8 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
             FTP   {$myFolderList | ForEach-Object {$this.Operate_OverFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.DestinationFolder,$null)}}
             SFTP  {$myFolderList | ForEach-Object {$this.Operate_OverSFtp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.DestinationFolder,$null,$this.SshHostKeyFingerprint)}}
             SCP   {$myFolderList | ForEach-Object {$this.Operate_OverScp([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,$_.DestinationFolder,$null,$this.SshHostKeyFingerprint)}}
-            UNC   {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.DestinationFolder)}}
-            LOCAL {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.DestinationFolder)}}
+            UNC   {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.DestinationFolder,$null)}}
+            LOCAL {$myFolderList | ForEach-Object {$this.Operate_OverUnc([HostOperation]::MKDIR,$this.Destination,$this.DestinationCredential,'A',$_.DestinationFolder,$null)}}
         }
         #--=======================Transfer file(s) to destination
         $this.LogWriter.Write($this.LogStaticMessage+'Transfer file(s) from source to destination is started.',[LogType]::INF)
@@ -1347,6 +1624,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 {
                                                                     $mySendResult=$this.Operate_OverFtp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile)
                                                                     if($mySendResult -eq $true) {
+                                                                        $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
@@ -1360,6 +1638,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 {
                                                                     $mySendResult=$this.Operate_OverSftp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile,$this.SshHostKeyFingerprint)
                                                                     if($mySendResult -eq $true) {
+                                                                        $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
@@ -1373,6 +1652,7 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 {
                                                                     $mySendResult=$this.Operate_OverScp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile,$this.SshHostKeyFingerprint)
                                                                     if($mySendResult -eq $true) {
+                                                                        $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
@@ -1384,8 +1664,9 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';')) 
                                                                 {
-                                                                    $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'\'+$_.FileName),('A','B'),$mySourceFile)
+                                                                    $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,('A','B'),($myPath+'\'+$_.FileName),$mySourceFile)
                                                                     if($mySendResult -eq $true) {
+                                                                        $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
@@ -1397,8 +1678,9 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
                                                                 $this.New_ShippedBackupsCatalogItem($_,'NONE')
                                                                 ForEach ($myPath IN $_.DestinationFolder.Split(';')) 
                                                                 {
-                                                                    $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'\'+$_.FileName),'A',$mySourceFile)
+                                                                    $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,'A',($myPath+'\'+$_.FileName),$mySourceFile)
                                                                     if($mySendResult -eq $true) {
+                                                                        $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
                                                                         $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
@@ -1427,6 +1709,112 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
             $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.ErrCount.ToString() + " Error(s) and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
         }
         $this.LogWriter.Write($this.LogStaticMessage+"===== Shipping backup process finished. ===== ", [LogType]::INF) 
+    }
+}
+[void] Delete_DepricatedBackup(){  #Transfer Backup from source to destination
+    try{
+        #--=======================Initial Delete DepricatedBackup
+        Write-Verbose ('===== Delete depricated backup file(s) started. =====')
+        $this.LogStaticMessage= ''
+        $this.LogWriter.Write($this.LogStaticMessage+'Delete_DepricatedBackup started.', [LogType]::INF) 
+
+        #--=======================Set constants
+        [bool]$myDestinationIsAlive=$false
+        [BackupCatalogItem[]]$myBackupCatalogItems=$null
+        [BackupCatalogItem]$myBackupCatalogItem=$null
+        [string]$myFolder=$null
+        [string]$myFile=$null
+        [bool]$myResult=$true
+
+        #--=======================Check and load assemblies
+        $this.LogWriter.Write($this.LogStaticMessage+'Check and load assemblies.', [LogType]::INF) 
+        if ($this.DestinationType -in ([DestinationType]::FTP,[DestinationType]::SFTP,[DestinationType]::SCP)) {
+            $this.LogWriter.Write($this.LogStaticMessage+'Try to load WinSCP .NET assembly.', [LogType]::INF) 
+            if ((Test-Path -Path ($this.WinscpPath) -PathType Leaf) -eq $false){
+                $this.LogWriter.Write($this.LogStaticMessage+'Winscp dll file does not exists on ' + $this.WinscpPath, [LogType]::ERR)
+                throw ('Winscp dll file does not exists.')
+            }
+            try {
+                Add-Type -Path $this.WinscpPath
+            } catch {
+                $this.LogWriter.Write($this.LogStaticMessage+'Winscp dll file could not be loaded.', [LogType]::ERR)
+                throw ('Winscp dll file could not be loaded.')
+            }
+        }
+        #--=======================Check shipped files catalog table connectivity
+        $this.LogWriter.Write($this.LogStaticMessage+'Test shipped files catalog table connectivity.', [LogType]::INF) 
+        if ((Test-DatabaseConnection -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -DatabaseName 'master') -eq $false) {
+            $this.LogWriter.Write($this.LogStaticMessage+'Can not connect to shipped files log sql instance on ' + $this.LogWriter.LogInstanceConnectionString, [LogType]::ERR) 
+            throw ($this.LogStaticMessage+'Can not connect to shipped files log sql instance.')
+        }
+        $this.LogWriter.Write($this.LogStaticMessage+'Initializing Shipped files catalog table.', [LogType]::INF)
+        if ($this.Create_ShippedBackupsCatalog() -eq $false)  {
+            $this.LogWriter.Write($this.LogStaticMessage+'Can not initialize table to save shipped files catalog on ' + $this.LogWriter.LogInstanceConnectionString + ' to ' + $this.BackupShippingCatalogTableName + ' table.', [LogType]::ERR) 
+            throw ($this.LogStaticMessage+'Shipped files catalog initialization failed.')
+        }
+        #--=======================Check destination credential existence
+        $this.LogWriter.Write($this.LogStaticMessage+'Check destination credential existence.', [LogType]::INF) 
+        if (!($this.DestinationCredential)) {
+            $this.LogWriter.Write($this.LogStaticMessage+'Destination Credential is not exists.', [LogType]::ERR) 
+            throw ($this.LogStaticMessage+'Destination Credential is not exists.')
+        }
+        #--=======================Check destination connectivity
+        $this.LogWriter.Write($this.LogStaticMessage+'Check Destination Connectivity with DestinationType of ' + $this.DestinationType + ', Destionation location of ' + $this.Destination + ' and DestinationCredential Username of ' + $this.DestinationCredential.UserName, [LogType]::INF) 
+        $myDestinationIsAlive = switch ($this.DestinationType) 
+        {
+            FTP    {$this.Operate_OverFtp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null)}
+            SFTP   {$this.Operate_OverSftp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null,$this.SshHostKeyFingerprint)}
+            SCP    {$this.Operate_OverScp([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,$null,$null,$this.SshHostKeyFingerprint)}
+            UNC    {$this.Operate_OverUnc([HostOperation]::ISALIVE,$this.Destination,$this.DestinationCredential,'A',$null,$null)}
+        }
+        if ($myDestinationIsAlive -eq $false){
+            $this.LogWriter.Write($this.LogStaticMessage+'Destination is not avilable.', [LogType]::ERR) 
+            throw 'Destination is not avilable.'
+        }
+        #--=======================Get files to delete
+        $this.LogWriter.Write($this.LogStaticMessage+'Get list of deprecated catalog item file(s) to delete.', [LogType]::INF) 
+        $myBackupCatalogItems=$this.Get_DepricatedCatalogItems()
+        if ($null -eq $myBackupCatalogItems) {
+            $this.LogWriter.Write($this.LogStaticMessage+'There is no catalog item(s) to delete.', [LogType]::ERR) 
+            throw 'There is no catalog item(s) to delete.'
+        }
+        #--=======================Delete files
+        ForEach ($myBackupCatalogItem IN $myBackupCatalogItems) {
+            ForEach ($myFolder IN ($myBackupCatalogItem.DestinationFolder.Trim().Split(";")|Where-Object {$_.Length -gt 0})) {
+                switch ($this.DestinationType) 
+                {
+                SCP {
+                        $myFile = $myFolder + '/' + $myBackupCatalogItem.FileName
+                        $this.LogWriter.Write($this.LogStaticMessage+'Start to delete ' + $myFile, [LogType]::INF) 
+                        $myResult=$true
+                        $myResult=$this.Operate_OverScp([HostOperation]::DELETE,$myBackupCatalogItem.Destination,$this.DestinationCredential,$myFile,$null,$this.SshHostKeyFingerprint)
+                    }
+                UNC {
+                        $myFile = $this.Path_CorrectFolderPathFormat($myFolder) + '\' + $myBackupCatalogItem.FileName
+                        $this.LogWriter.Write($this.LogStaticMessage+'Start to delete ' + $myFile, [LogType]::INF) 
+                        $myResult=$true
+                        $myResult=$this.Operate_OverUnc([HostOperation]::DELETE,$myBackupCatalogItem.Destination,$this.DestinationCredential,'A',$myFile,$null)
+                    }
+                }
+
+                if ($myResult -eq $true) {
+                    $this.LogWriter.Write($this.LogStaticMessage+$myFile+' is deleted.' + $myFile, [LogType]::INF) 
+                    $this.Set_ShippedBackupsCatalogItemDeleteFlag($myBackupCatalogItem)
+                    $this.LogWriter.Write($this.LogStaticMessage+$myFile+' with id ' + $myBackupCatalogItem.Id.ToString() + ' is flagged as deleted.' + $myFile, [LogType]::INF) 
+                }else{
+                    #$this.Set_ShippedBackupsCatalogItemDeleteFlag($myBackupCatalogItem)
+                    $this.LogWriter.Write($this.LogStaticMessage+$myFile+' deletion is failed.' + $myFile, [LogType]::ERR) 
+                }
+            }
+        }
+    } 
+    catch {
+        Write-Error ($_.ToString())
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+    }
+    finally {
+        Write-Verbose ('===== Delete_DepricatedBackup finished. =====')
+        $this.LogWriter.Write($this.LogStaticMessage+('===== Delete_DepricatedBackup finished. ====='), [LogType]::INF) 
     }
 }
 #endregion
