@@ -102,7 +102,46 @@ $myBackupShipping.WinScpPath='U:\Install\WinSCP\WinSCPnet.dll'
 $myBackupShipping.Set_DestinationCredential($myCredential)
 $myBackupShipping.Transfer_Backup()
 
-#--Sample #6:   Get Credential via GUI and Delete deprecated shipped files from destination
+#--Sample #6:   Get Credential via GUI and shipp all databases to destination
+$myBackupShipping=[BackupShipping]::New()
+$myBackupShipping.LogWriter=$myLogWriter
+$myBackupShipping.SourceInstanceConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=Tempdb;Integrated Security=True;TrustServerCertificate=True;Encrypt=True'
+$myBackupShipping.Databases=$myDatabases
+$myBackupShipping.BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG)
+$myBackupShipping.HoursToScanForUntransferredBackups=24
+$myBackupShipping.DestinationType=[DestinationType]::UNC
+$myBackupShipping.Destination='\\DB-MN-DLV01\Repo'
+$myBackupShipping.DestinationFolderStructure='tst\{CustomRule01}\{CustomRule02(J)}\{ServerName}_{InstanceName}'
+$myBackupShipping.ActionType=[ActionType]::Copy
+$myBackupShipping.RetainDaysOnDestination='CustomRule01'
+$myBackupShipping.TransferedFileDescriptionSuffix='Transfereds'
+$myBackupShipping.BackupShippingCatalogTableName='TransferredFiles'
+$myBackupShipping.WinScpPath='U:\Install\WinSCP\WinSCPnet.dll'
+[System.Net.NetworkCredential]$myCredential=Get-Credential
+$myBackupShipping.Set_DestinationCredential($myCredential)
+$myBackupShipping.Transfer_AllDatabasesBackup($null)
+
+#--Sample #7:   Get Credential via GUI and shipp all databases except SqlDeep,Test01 to destination
+$myBackupShipping=[BackupShipping]::New()
+$myBackupShipping.LogWriter=$myLogWriter
+$myBackupShipping.SourceInstanceConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=Tempdb;Integrated Security=True;TrustServerCertificate=True;Encrypt=True'
+$myBackupShipping.Databases=$myDatabases
+$myBackupShipping.BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG)
+$myBackupShipping.HoursToScanForUntransferredBackups=24
+$myBackupShipping.DestinationType=[DestinationType]::UNC
+$myBackupShipping.Destination='\\DB-MN-DLV01\Repo'
+$myBackupShipping.DestinationFolderStructure='tst\{CustomRule01}\{CustomRule02(J)}\{ServerName}_{InstanceName}'
+$myBackupShipping.ActionType=[ActionType]::Copy
+$myBackupShipping.RetainDaysOnDestination='CustomRule01'
+$myBackupShipping.TransferedFileDescriptionSuffix='Transfereds'
+$myBackupShipping.BackupShippingCatalogTableName='TransferredFiles'
+$myBackupShipping.WinScpPath='U:\Install\WinSCP\WinSCPnet.dll'
+[System.Net.NetworkCredential]$myCredential=Get-Credential
+$myBackupShipping.Set_DestinationCredential($myCredential)
+[string[]]$myExcludedList=('SqlDeep','Test01')
+$myBackupShipping.Transfer_AllDatabasesBackup($myExcludedList)
+
+#--Sample #8:   Get Credential via GUI and Delete deprecated shipped files from destination
 $myBackupShipping=[BackupShipping]::New()
 $myBackupShipping.LogWriter=$myLogWriter
 $myBackupShipping.SourceInstanceConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=Tempdb;Integrated Security=True;TrustServerCertificate=True;Encrypt=True'

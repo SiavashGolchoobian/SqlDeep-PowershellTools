@@ -194,9 +194,9 @@ Class BackupFile {
         $myAnswer=$FolderTemplate
         $myRuleName='{CustomRule01}'
         if ($this.BackupType -eq 'L') {
-            $myAnswer=$myAnswer.Replace($myRuleName, "disk_only")
+            $myAnswer=$myAnswer.Replace($myRuleName, 'disk_only')
         }else{
-            $myAnswer=$myAnswer.Replace($myRuleName, "tape_only")
+            $myAnswer=$myAnswer.Replace($myRuleName, 'tape_only')
         }
         return $myAnswer
     }
@@ -225,9 +225,9 @@ Class BackupFile {
         $myJalaliMonth=$myPersianCalendar.GetMonth($this.BackupStartTime).ToString()
         $myJalaliDayOfMonth=$myPersianCalendar.GetDayOfMonth($this.BackupStartTime).ToString()
         $myJalaliDayOfWeek=$myMapGregorianWeekDayToPersianWeekDay.Item($this.BackupStartTime.DayOfWeek.value__)
-        $myGregorianYear=$this.BackupStartTime.ToString("yyyy")
-        $myGregorianMonth=$this.BackupStartTime.ToString("MM")
-        $myGregorianDayOfMonth=$this.BackupStartTime.ToString("dd")
+        $myGregorianYear=$this.BackupStartTime.ToString('yyyy')
+        $myGregorianMonth=$this.BackupStartTime.ToString('MM')
+        $myGregorianDayOfMonth=$this.BackupStartTime.ToString('dd')
         $myGregorianDayOfWeek=([int]$this.BackupStartTime.DayOfWeek).ToString()
         if ($myJalaliMonth.Length -eq 1) {$myJalaliMonth='0'+$myJalaliMonth}
         if ($myJalaliDayOfMonth.Length -eq 1) {$myJalaliDayOfMonth='0'+$myJalaliDayOfMonth}
@@ -235,17 +235,17 @@ Class BackupFile {
         switch ($CalendarType) {
             'Gregorian'.ToUpper()   {
                     $myRuleName='{CustomRule02(G)}'
-                    IF ($myGregorianMonth -eq '01' -and $myGregorianDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "yearly")}
-                    ELSEIF ($myGregorianDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "monthly")}
-                    ELSEIF ($myGregorianDayOfWeek -eq '1') {$myAnswer=$myAnswer.Replace($myRuleName, "weekly")}
-                    ELSE {$myAnswer=$myAnswer.Replace($myRuleName, "daily")}
+                    IF ($myGregorianMonth -eq '01' -and $myGregorianDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, 'yearly')}
+                    ELSEIF ($myGregorianDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, 'monthly')}
+                    ELSEIF ($myGregorianDayOfWeek -eq '1') {$myAnswer=$myAnswer.Replace($myRuleName, 'weekly')}
+                    ELSE {$myAnswer=$myAnswer.Replace($myRuleName, 'daily')}
                 }
             'Jalali'.ToUpper()      {
                     $myRuleName='{CustomRule02(J)}' 
-                    IF ($myJalaliMonth -eq '01' -and $myJalaliDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "yearly")}
-                    ELSEIF ($myJalaliDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, "monthly")}
-                    ELSEIF ($myJalaliDayOfWeek -eq '1') {$myAnswer=$myAnswer.Replace($myRuleName, "weekly")}
-                    ELSE {$myAnswer=$myAnswer.Replace($myRuleName, "daily")}
+                    IF ($myJalaliMonth -eq '01' -and $myJalaliDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, 'yearly')}
+                    ELSEIF ($myJalaliDayOfMonth -eq '01') {$myAnswer=$myAnswer.Replace($myRuleName, 'monthly')}
+                    ELSEIF ($myJalaliDayOfWeek -eq '1') {$myAnswer=$myAnswer.Replace($myRuleName, 'weekly')}
+                    ELSE {$myAnswer=$myAnswer.Replace($myRuleName, 'daily')}
                 }
         }
 
@@ -277,11 +277,20 @@ Class BackupShipping {
 
     BackupShipping(){
     }
+    BackupShipping([string]$SourceInstanceConnectionString,[BackupType[]]$BackupTypes,[int]$HoursToScanForUntransferredBackups,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[string]$RetainDaysOnDestination,[string]$TransferedFileDescriptionSuffix,[string]$BackupShippingCatalogTableName,[LogWriter]$LogWriter){
+        [string[]]$myDatabases=$null;
+        [ActionType]$myActionType=$null;
+        [string]$myWinScpPath=$null;
+        [System.Net.NetworkCredential]$myDestinationCredential=$null;
+        [string]$mySshHostKeyFingerprint=$null;
+
+        $this.Init($SourceInstanceConnectionString,$myDatabases,$BackupTypes,$HoursToScanForUntransferredBackups,$DestinationType,$Destination,$DestinationFolderStructure,$mySshHostKeyFingerprint,$myActionType,$RetainDaysOnDestination,$TransferedFileDescriptionSuffix,$BackupShippingCatalogTableName,$myWinScpPath,$myDestinationCredential,$LogWriter)
+    }
     BackupShipping([string]$SourceInstanceConnectionString,[string[]]$Databases,[DestinationType]$DestinationType,[string]$Destination,[string]$DestinationFolderStructure,[LogWriter]$LogWriter){
         [BackupType[]]$myBackupTypes=$null;
         [ActionType]$myActionType=$null;
         [string]$myTransferedFileDescriptionSuffix=$null;
-        [string]$myBackupShippingCatalogTableName==$null;
+        [string]$myBackupShippingCatalogTableName=$null;
         [string]$myWinScpPath=$null;
         [System.Net.NetworkCredential]$myDestinationCredential=$null;
         [int]$myHoursToScanForUntransferredBackups=$null;
@@ -359,9 +368,9 @@ Class BackupShipping {
 #region Functions
 hidden [string]Path_CorrectFolderPathFormat ([string]$FolderPath) {    #Correcting folder path format
     if ($this.LogWriter) {
-        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     } else {
-        Write-Verbose "Processing Started."
+        Write-Verbose 'Processing Started.'
     }
     [string]$myAnswer=$null
     $FolderPath=$FolderPath.Trim()
@@ -1223,7 +1232,7 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
             $this.LogWriter.Write($this.LogStaticMessage+'Comparing SourceDriveURI of ' + $mySourceDriveURI + ' with SharedFolderPath of ' + $SharedFolderPath, [LogType]::INF)
             if ($mySourceDriveURI.ToUpper() -ne $SharedFolderPath.ToUpper()) {
                 New-PSDrive -Name $mySourceDriveLetter -PSProvider filesystem -Root $mySourceDriveURI -Credential $myCredential
-                if ((Test-Path -Path ($mySourceDriveLetter+":") -PathType Container) -eq $false) {
+                if ((Test-Path -Path ($mySourceDriveLetter+':') -PathType Container) -eq $false) {
                     $this.LogWriter.Write($this.LogStaticMessage+'Create Source Drive Letter Error for ' + $mySourceDriveLetter + ' defined on ' + $mySourceDriveURI + ' as user ' + $myDestinationUser, [LogType]::ERR)
                     $myAnswer = $false
                     return $myAnswer
@@ -1249,7 +1258,7 @@ hidden [bool]Operate_UNC_Upload([string]$SharedFolderPath,[System.Net.NetworkCre
         $myResult = Test-Path -PathType Leaf -Path $myDestinationPath
 
         if ($myResult) {
-            $this.LogWriter.Write($this.LogStaticMessage+'New file uploaded (' + $ActionType + ") from " + $SourceFilePath + '(' + $mySourceFilePath +') to ' + $myDestinationPath, [LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+'New file uploaded (' + $ActionType + ') from ' + $SourceFilePath + '(' + $mySourceFilePath +') to ' + $myDestinationPath, [LogType]::INF)
             $myAnswer=$true
         }else{
             $this.LogWriter.Write($this.LogStaticMessage+'Failed to upload (' + $ActionType + ') from ' + $SourceFilePath + '(' + $mySourceFilePath +') to ' + $myDestinationPath, [LogType]::ERR)
@@ -1523,6 +1532,33 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
     }
     return $myAnswer
 }
+[void] Transfer_AllDatabasesBackup([string[]]$ExcludedList){  #Transfer Backup from source to destination
+    Write-Verbose ('Transfer_AllDatabasesBackup')
+    $this.LogWriter.Write($this.LogStaticMessage+('Transfer_AllDatabasesBackup'),[LogType]::INF)
+    [string]$myExludedDB=''
+    [string[]]$myDatabases=$null
+
+    if ($null -ne $ExcludedList){
+        foreach ($myExceptedDB in $ExcludedList){
+            $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
+        }
+    }
+    [string]$myCommand="
+        SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+") ORDER BY [name]
+        "
+    
+        try{
+        [System.Data.DataRow[]]$myRecords=$null
+        $myRecords=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+        if ($null -ne $myRecords) {
+            $Null=$myRecords | ForEach-Object{$myDatabases += $_.DbName}
+            $this.Databases=$myDatabases
+            $this.Transfer_Backup()
+        }
+    }Catch{
+        Write-Verbose(($_.ToString()).ToString())
+    }
+}
 [void] Transfer_Backup(){  #Transfer Backup from source to destination
     try {
         #--=======================Initial ShipBackup Modules
@@ -1702,13 +1738,13 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
         $this.LogWriter.Write($this.LogStaticMessage+('===== BackupShipping finished. ====='), [LogType]::INF) 
 
         if ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -eq 0) {
-            $this.LogWriter.Write($this.LogStaticMessage+"Finished.",[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+'Finished.',[LogType]::INF)
         }elseif ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -gt 0) {
-            $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
+            $this.LogWriter.Write($this.LogStaticMessage+('Finished with ' + $this.LogWriter.WrnCount.ToString() + ' Warning(s).'),[LogType]::WRN)
         }else{
-            $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.ErrCount.ToString() + " Error(s) and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
+            $this.LogWriter.Write($this.LogStaticMessage+('Finished with ' + $this.LogWriter.ErrCount.ToString() + ' Error(s) and ' + $this.LogWriter.WrnCount.ToString() + ' Warning(s).'),[LogType]::ERR)
         }
-        $this.LogWriter.Write($this.LogStaticMessage+"===== Shipping backup process finished. ===== ", [LogType]::INF) 
+        $this.LogWriter.Write($this.LogStaticMessage+'===== Shipping backup process finished. ===== ', [LogType]::INF) 
     }
 }
 [void] Delete_DepricatedBackup(){  #Transfer Backup from source to destination
@@ -1780,7 +1816,7 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
         }
         #--=======================Delete files
         ForEach ($myBackupCatalogItem IN $myBackupCatalogItems) {
-            ForEach ($myFolder IN ($myBackupCatalogItem.DestinationFolder.Trim().Split(";")|Where-Object {$_.Length -gt 0})) {
+            ForEach ($myFolder IN ($myBackupCatalogItem.DestinationFolder.Trim().Split(';')|Where-Object {$_.Length -gt 0})) {
                 switch ($this.DestinationType) 
                 {
                 SCP {
@@ -1824,39 +1860,29 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
 Function New-BackupShipping {
     Param(
         [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
-        [Parameter(Mandatory=$true)][string[]]$Databases,
         [Parameter(Mandatory=$false)][BackupType[]]$BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG),
         [Parameter(Mandatory=$false)][int]$HoursToScanForUntransferredBackups=72,
         [Parameter(Mandatory=$true)][DestinationType]$DestinationType,
         [Parameter(Mandatory=$true)][string]$Destination,
         [Parameter(Mandatory=$true)][string]$DestinationFolderStructure,
-        [Parameter(Mandatory=$false)][string]$SshHostKeyFingerprint=$null,
-        [Parameter(Mandatory=$false)][ActionType]$ActionType=[ActionType]::COPY,
         [Parameter(Mandatory=$false)][string]$RetainDaysOnDestination='7',
         [Parameter(Mandatory=$false)][string]$TransferedFileDescriptionSuffix='Transfered',
         [Parameter(Mandatory=$false)][string]$BackupShippingCatalogTableName='TransferredFiles',
-        [Parameter(Mandatory=$false)][string]$WinScpPath='C:\Program Files (x86)\WinSCP\WinSCPnet.dll',
-        [Parameter(Mandatory=$false)][System.Net.NetworkCredential]$DestinationCredential=$null,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
-    Write-Verbose "Creating New-BackupShipping"
+    Write-Verbose 'Creating New-BackupShipping'
     [string]$mySourceInstanceConnectionString=$SourceInstanceConnectionString;
-    [string[]]$myDatabases=$Databases;
     [BackupType[]]$myBackupTypes=$BackupTypes;
     [int]$myHoursToScanForUntransferredBackups=$HoursToScanForUntransferredBackups;
     [DestinationType]$myDestinationType=$DestinationType;
     [string]$myDestination=$Destination;
     [string]$myDestinationFolderStructure=$DestinationFolderStructure;
-    [string]$mySshHostKeyFingerprint=$SshHostKeyFingerprint;
-    [ActionType]$myActionType=$ActionType;
     [string]$myRetainDaysOnDestination=$RetainDaysOnDestination;
     [string]$myTransferedFileDescriptionSuffix=$TransferedFileDescriptionSuffix;
     [string]$myBackupShippingCatalogTableName=$BackupShippingCatalogTableName;
-    [string]$myWinScpPath=$WinScpPath;
-    [System.Net.NetworkCredential]$myDestinationCredential=$DestinationCredential;
     [LogWriter]$myLogWriter=$LogWriter;
-    [BackupShipping]::New($mySourceInstanceConnectionString,$myDatabases,$myBackupTypes,$myHoursToScanForUntransferredBackups,$myDestinationType,$myDestination,$myDestinationFolderStructure,$mySshHostKeyFingerprint,$myActionType,$myRetainDaysOnDestination,$myTransferedFileDescriptionSuffix,$myBackupShippingCatalogTableName,$myWinScpPath,$myDestinationCredential,$myLogWriter)
-    Write-Verbose "New-BackupShipping Created"
+    [BackupShipping]::New($mySourceInstanceConnectionString,$myBackupTypes,$myHoursToScanForUntransferredBackups,$myDestinationType,$myDestination,$myDestinationFolderStructure,$myRetainDaysOnDestination,$myTransferedFileDescriptionSuffix,$myBackupShippingCatalogTableName,$myLogWriter)
+    Write-Verbose 'New-BackupShipping Created'
 }
 #endregion
 
