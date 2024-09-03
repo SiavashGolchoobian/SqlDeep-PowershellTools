@@ -1327,6 +1327,12 @@ hidden [bool]Operate_UNC_Delete([string]$SharedFolderPath,[System.Net.NetworkCre
     }
     return $myAnswer
 }
+[void] Save_CredentialToStore([string]$StoreCredentialName,[string]$UserName,[string]$Password){  #Save credential to Windows Credential Manager
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+    $myPassword = ConvertTo-SecureString -String $Password -AsPlainText -Force
+    [System.Net.NetworkCredential]$myCredential = (New-Object System.Management.Automation.PSCredential($UserName, $myPassword)).GetNetworkCredential()
+    $this.Save_CredentialToStore($StoreCredentialName,$myCredential)
+}
 [void] Save_CredentialToStore([string]$StoreCredentialName,[System.Net.NetworkCredential]$Credential){  #Save credential to Windows Credential Manager
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     if(-not(Get-Module -ListAvailable -Name CredentialManager)) {
@@ -1336,7 +1342,7 @@ hidden [bool]Operate_UNC_Delete([string]$SharedFolderPath,[System.Net.NetworkCre
         Import-Module CredentialManager
     }
     if (Get-StoredCredential -Target $StoreCredentialName) { #Remove any existed credential
-        Remove-StoredCredential -Target StoreCredentialName
+        Remove-StoredCredential -Target $StoreCredentialName
     }
     New-StoredCredential -Target $StoreCredentialName -Type Generic -UserName $Credential.UserName -Password $Credential.Password -Persist LocalMachine
 }
@@ -1573,6 +1579,8 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
         [System.Collections.ArrayList]$myFolderList = $null
         [string]$myCurrentMachineName=([Environment]::MachineName).ToUpper()
         $this.Databases=$this.Databases | Clear-SqlParameter -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign  #Clear database names
+        $this.LogWriter.Write($this.LogStaticMessage+'Selected Databases are:', [LogType]::INF)
+        $this.Databases | ForEach-Object{$this.LogWriter.Write($this.LogStaticMessage+'     '+$_, [LogType]::INF) }
         $this.TransferedFileDescriptionSuffix=Clear-SqlParameter -ParameterValue ($this.TransferedFileDescriptionSuffix) -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign  #Clear TransferedFileDescriptionSuffix value
         $this.DestinationFolderStructure=(Clear-SqlParameter -ParameterValue $this.DestinationFolderStructure -RemoveWildcard -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign).Replace('\\','')
         if ($this.DestinationFolderStructure[0] -eq '\') {$this.DestinationFolderStructure.Remove(0,1)}
