@@ -746,17 +746,6 @@ hidden [void]Set_BackupsCatalogItemAsShippedOnMsdb([BackupFile]$BackupFile) {
     #if ($null -ne $myRecord) {$myAnswer=$true}
     #return $myAnswer
 }
-hidden [PSCustomObject]Get_InstanceInformation([string]$ConnectionString) {  #Get database server instance name
-    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-    [string]$myAnswer=$null
-    try{
-        $myInstanceInfo=Get-InstanceInformation -ConnectionString $ConnectionString -ShowRelatedInstanceOnly
-        if ($null -ne $myInstanceInfo) {$myAnswer=$myInstanceInfo} else {$myAnswer=$null}
-    }Catch{
-        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-    }
-    return $myAnswer
-}
 hidden [bool]Operate_OverFtp([HostOperation]$Operation,[string]$Server,[System.Net.NetworkCredential]$Credential,[string]$DestinationPath,[string]$SourceFilePath) {  #Upload file to FTP path by winscp
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=$false
@@ -1479,10 +1468,20 @@ hidden [BackupFile[]]Get_UntransferredBackups([string]$ConnectionString,[string[
     }
     return $myAnswer
 }
-hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of deprecated  backup catalog items accordinf to DeleteDate
+hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[string]$InstanceName){   #Retrive list of deprecated  backup catalog items accordinf to DeleteDate
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)    
     [BackupCatalogItem[]]$myAnswer=$null
     [string]$myCommand=$null
+    [string]$myFilter=''
+
+    if ($null -ne $MachineName) {   #Clear Machine name
+        $MachineName = $MachineName | Clear-SqlParameter -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+        $myFilter+="AND [MachineName] = '" + $MachineName + "' "
+    }
+    if ($null -ne $InstanceName) {  #Clear Instance name
+        $InstanceName = $InstanceName | Clear-SqlParameter -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+        $myFilter+="AND [InstanceName] = '" + $InstanceName + "' "
+    } 
 
     $myCommand="
     DECLARE @myToday Datetime
@@ -1518,6 +1517,7 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
         myTransferLog.DeleteDate <= @myToday
         AND myTransferLog.IsDeleted = 0
         AND myTransferLog.TransferStatus = 'SUCCEED'
+        "+$myFilter+"
     ORDER BY
         Id
 "
@@ -1755,7 +1755,7 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
         $this.LogWriter.Write($this.LogStaticMessage+'===== Shipping backup process finished. ===== ', [LogType]::INF) 
     }
 }
-[void] Delete_DepricatedBackup(){  #Transfer Backup from source to destination
+[void] Delete_DepricatedBackup([bool]$CleanupAllServers){  #Transfer Backup from source to destination
     try{
         #--=======================Initial Delete DepricatedBackup
         Write-Verbose ('===== Delete depricated backup file(s) started. =====')
@@ -1769,6 +1769,10 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
         [string]$myFolder=$null
         [string]$myFile=$null
         [bool]$myResult=$true
+        [PSCustomObject]$mySourceInstanceInfo=$null
+        [string]$mySourceServerName=$null
+        [string]$mySourceInstanceName=$null
+        if ($null -eq $CleanupAllServers) {$CleanupAllServers=$true}
 
         #--=======================Check and load assemblies
         $this.LogWriter.Write($this.LogStaticMessage+'Check and load assemblies.', [LogType]::INF) 
@@ -1815,9 +1819,30 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
             $this.LogWriter.Write($this.LogStaticMessage+'Destination is not avilable.', [LogType]::ERR) 
             throw 'Destination is not avilable.'
         }
+        #--=======================Determine candidate file server(s)
+        $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name.',[LogType]::INF)
+        if ($CleanupAllServers -eq $false){
+            $mySourceInstanceInfo=Get-InstanceInformation -ConnectionString $this.SourceInstanceConnectionString -ShowRelatedInstanceOnly
+            if ($mySourceInstanceInfo.PsObject.Properties.Name -eq 'MachineName') {
+                $mySourceServerName=$mySourceInstanceInfo.MachineName
+                $mySourceInstanceName=$mySourceInstanceInfo.InstanceName
+                $this.LogWriter.Write($this.LogStaticMessage+'Source server name is ' + $mySourceServerName + ' and Instance name is ' + $mySourceInstanceName,[LogType]::INF)
+            } else {
+                $this.LogWriter.Write($this.LogStaticMessage+'Get-InstanceInformation failure.', [LogType]::ERR) 
+                throw ('Get-InstanceInformation failure.')
+            }
+            if ($null -eq $mySourceServerName -or $mySourceServerName.Length -eq 0) {
+                $this.LogWriter.Write($this.LogStaticMessage+'Source server name is empty.',[LogType]::ERR)
+                throw 'Source server name is empty.'
+            }
+        }else{
+            $mySourceServerName=$null
+            $mySourceInstanceName=$null
+        }
+
         #--=======================Get files to delete
         $this.LogWriter.Write($this.LogStaticMessage+'Get list of deprecated catalog item file(s) to delete.', [LogType]::INF) 
-        $myBackupCatalogItems=$this.Get_DepricatedCatalogItems()
+        $myBackupCatalogItems=$this.Get_DepricatedCatalogItems($mySourceServerName,$mySourceInstanceName)
         if ($null -eq $myBackupCatalogItems) {
             $this.LogWriter.Write($this.LogStaticMessage+'There is no catalog item(s) to delete.', [LogType]::ERR) 
             throw 'There is no catalog item(s) to delete.'
@@ -1846,7 +1871,6 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
                     $this.Set_ShippedBackupsCatalogItemDeleteFlag($myBackupCatalogItem)
                     $this.LogWriter.Write($this.LogStaticMessage+$myFile+' with id ' + $myBackupCatalogItem.Id.ToString() + ' is flagged as deleted.' + $myFile, [LogType]::INF) 
                 }else{
-                    #$this.Set_ShippedBackupsCatalogItemDeleteFlag($myBackupCatalogItem)
                     $this.LogWriter.Write($this.LogStaticMessage+$myFile+' deletion is failed.' + $myFile, [LogType]::ERR) 
                 }
             }
