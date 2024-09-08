@@ -643,8 +643,8 @@ hidden [void]Set_ShippedBackupsCatalogItemDeleteDate(){
 
     $myCommandExtension=''
     if ($this.RetainDaysOnDestination.ToUpper() -eq 'CustomRule01'.ToUpper()) {
-        #CustomRule01: Keep log backup files for 2days, keep full backup and differential backup for 1 day on destination
-        $myCommandExtension=$this.Get_ShippedBackupsCatalogItemDeleteDate_CustomeRule01(2,1,1,1)
+        #CustomRule01: Keep log backup files for 2days, keep full backup and differential backup for 2 day on destination
+        $myCommandExtension=$this.Get_ShippedBackupsCatalogItemDeleteDate_CustomeRule01(2,2,2,2)
     } elseif ((IsNumeric -Value $this.RetainDaysOnDestination) -eq $true) {
         #Keep files for (RetainDaysOnDestination) days on destination
         $myCommandExtension=$this.RetainDaysOnDestination
@@ -1550,7 +1550,7 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems (){   #Retrive list of de
         }
     }
     [string]$myCommand="
-        SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+") ORDER BY [name]
+        SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('tempdb'"+$myExludedDB+") ORDER BY [name]
         "
     
         try{
