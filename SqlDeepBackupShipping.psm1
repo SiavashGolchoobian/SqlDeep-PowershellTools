@@ -1523,6 +1523,7 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
 "
     try{
         Write-Verbose $myCommand
+        $this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
         $this.LogWriter.Write($this.LogStaticMessage+'Retrive list of delete backup candidate files.',[LogType]::INF)
         [System.Data.DataRow[]]$myRecords=$null
         $myRecords=Invoke-Sqlcmd -ConnectionString $this.LogWriter.LogInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
@@ -1819,7 +1820,7 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
             $this.LogWriter.Write($this.LogStaticMessage+'Destination is not avilable.', [LogType]::ERR) 
             throw 'Destination is not avilable.'
         }
-        #--=======================Determine candidate file server(s)
+        #--=======================Determine candidate server(s)
         $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name.',[LogType]::INF)
         if ($CleanupAllServers -eq $false){
             $mySourceInstanceInfo=Get-InstanceInformation -ConnectionString $this.SourceInstanceConnectionString -ShowRelatedInstanceOnly
