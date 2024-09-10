@@ -1756,7 +1756,19 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
         $this.LogWriter.Write($this.LogStaticMessage+'===== Shipping backup process finished. ===== ', [LogType]::INF) 
     }
 }
-[void] Delete_DepricatedBackup([bool]$CleanupAllServers){  #Transfer Backup from source to destination
+[void] Delete_DepricatedBackupsOfAllServers(){
+    Write-Verbose ('===== Delete depricated backup file(s) of all server started. =====')
+    $this.LogStaticMessage= ''
+    $this.LogWriter.Write($this.LogStaticMessage+'Delete_DepricatedBackupsOfAllServers started.', [LogType]::INF) 
+    $this.Delete_DepricatedBackup($true)
+}
+[void] Delete_DepricatedBackupsOfSourceServer(){
+    Write-Verbose ('===== Delete depricated backup file(s) of source server started. =====')
+    $this.LogStaticMessage= ''
+    $this.LogWriter.Write($this.LogStaticMessage+'Delete_DepricatedBackupsOfSourceServer started.', [LogType]::INF) 
+    $this.Delete_DepricatedBackup($false)
+}
+hidden [void] Delete_DepricatedBackup([bool]$CleanupAllServers){  #Transfer Backup from source to destination
     try{
         #--=======================Initial Delete DepricatedBackup
         Write-Verbose ('===== Delete depricated backup file(s) started. =====')
