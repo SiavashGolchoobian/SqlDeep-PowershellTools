@@ -668,6 +668,7 @@ hidden [void]Set_ShippedBackupsCatalogItemDeleteDate(){
         AND [InstanceName] = @myInstanceName
     "
     try{
+        $this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
         Write-Verbose $myCommand
         Invoke-Sqlcmd -ConnectionString $this.LogWriter.LogInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
         $myAnswer=$true
@@ -1523,7 +1524,7 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
 "
     try{
         Write-Verbose $myCommand
-        $this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
+        #$this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
         $this.LogWriter.Write($this.LogStaticMessage+'Retrive list of delete backup candidate files.',[LogType]::INF)
         [System.Data.DataRow[]]$myRecords=$null
         $myRecords=Invoke-Sqlcmd -ConnectionString $this.LogWriter.LogInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop

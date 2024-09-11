@@ -2,11 +2,11 @@
     function IsNumeric {  #Check if input value is numeric
         [OutputType([bool])]
         param (
-            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input value to evaluate")][AllowNull()]$Value
+            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input value to evaluate")][AllowEmptyString()][AllowNull()]$Value
         )
         begin{}
         process{
-            return $Value -match "^[\d\.]+$"
+            return ($Value -match "^[\d\.]+$")
         }
         end{}
     }
@@ -462,5 +462,5 @@
 #endregion
 
 #region Export
-    Export-ModuleMember -Function Clear-Text,Clear-SqlParameter,Export-DatabaseBlob,Read-SqlQuery,Invoke-SqlCommand,Test-DatabaseConnection,Test-InstanceConnection,Get-InstanceInformation
+    Export-ModuleMember -Function IsNumeric,Clear-Text,Clear-SqlParameter,Export-DatabaseBlob,Read-SqlQuery,Invoke-SqlCommand,Test-DatabaseConnection,Test-InstanceConnection,Get-InstanceInformation
 #endregion

@@ -158,6 +158,6 @@ $myBackupShipping.BackupShippingCatalogTableName='TransferredFiles'
 $myBackupShipping.WinScpPath='U:\Install\WinSCP\WinSCPnet.dll'
 [System.Net.NetworkCredential]$myCredential=Get-Credential
 $myBackupShipping.Set_DestinationCredential($myCredential)
-$myBackupShipping.Delete_DepricatedBackupsOfSourceServer   #Delete all deprecated files related to current instance
+$myBackupShipping.Delete_DepricatedBackupsOfSourceServer()   #Delete all deprecated files related to current instance
 #OR
-$myBackupShipping.Delete_DepricatedBackupsOfAllServers   #Delete all deprecated files of all servers
+$myBackupShipping.Delete_DepricatedBackupsOfAllServers()   #Delete all deprecated files of all servers
