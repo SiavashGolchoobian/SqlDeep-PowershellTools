@@ -25,7 +25,35 @@ Class BackupTest:DatabaseShipping {
 #Test inherited class
 $myBackupTest=[BackupTest]::New()
 #>
-
+Class BackupTestCatalogItem {
+    [bigint]$Id
+    [string]$InstanceName
+    [string]$DatabaseName
+    [int]$TestResult
+    [datetime]$BackupRestoredTime
+    [datetime]$BackupStartTime
+    [string]$LogFilePath
+    [datetime]$SysRowVersion
+    [string]$TestResultDescription
+    [bigint]$HashValue
+    [datetime]$FinishTime
+   
+    BackupTestCatalogItem([bigint]$Id,[string]$InstanceName,[string]$DatabaseName,[int]$TestResult,[datetime]$BackupRestoredTime,[datetime]$BackupStartTime,[string]$LogFilePath,[datetime]$SysRowVersion,[string]$TestResultDescription,[bigint]$HashValue,[datetime]$FinishTime){
+        Write-Verbose 'BackupCatalogItem object initializing started'
+        $this.Id=$Id
+        $this.InstanceName=$InstanceName
+        $this.DatabaseName=$DatabaseName
+        $this.TestResult=$TestResult
+        $this.BackupRestoredTime=$BackupRestoredTime
+        $this.BackupStartTime=$BackupStartTime
+        $this.LogFilePath=$LogFilePath
+        $this.SysRowVersion=$SysRowVersion
+        $this.TestResultDescription=$TestResultDescription
+        $this.HashValue=$HashValue
+        $this.FinishTime=$FinishTime
+        Write-Verbose 'BackupCatalogItem object initialized'
+    }
+}
 <
 Class BackupTest:DatabaseShipping {
         <#
@@ -51,10 +79,10 @@ Class BackupTest:DatabaseShipping {
         # Additional initialization if needed
         [string]$BackupTestCatalogTableName;
         [Int]$MinimumDate ;
-        [Int]$MaximumDate 
+        [Int]$MaximumDate ;
+        [string]$RestoreInstance;
 
-
-        # [string]$RestoreInstance
+        # 
         # [string]$MonitoringServer
         # [string]$DatabaseReportStore
         # [string]$DestinationPath
@@ -66,9 +94,8 @@ Class BackupTest:DatabaseShipping {
     BackupTest(
         [string]$myBackupTestCatalogTableName = $null,
         [Int]$myMinimumDate = 1,
-        [Int]$myMaximumDate = 5
-
-        # [string]$restoreInstance,
+        [Int]$myMaximumDate = 5,
+        [string]$myRestoreInstance
         # [string]$monitoringServer,
         # [string]$databaseReportStore,
         # [string]$destinationPath,
@@ -80,7 +107,7 @@ Class BackupTest:DatabaseShipping {
         $this.BackupTestCatalogTableName = $myBackupTestCatalogTableName   
         $this.MaximumDate =$myMinimumDate
         $this.MaximumDate =$myMaximumDate
-        # $this.RestoreInstance = $restoreInstance
+        $this.RestoreInstance = $myRestoreInstance
         # $this.MonitoringServer = $monitoringServer
         # $this.DatabaseReportStore = $databaseReportStore
         # $this.DestinationPath = $destinationPath
@@ -92,7 +119,7 @@ Class BackupTest:DatabaseShipping {
    {  
         $this.BackupTestCatalogTableName = $BackupTestCatalogTableName
 
-        # $this.RestoreInstance = $restoreInstance
+         $this.RestoreInstance = $restoreInstance
         # $this.MonitoringServer = $monitoringServer
         # $this.DatabaseReportStore = $databaseReportStore
         # $this.DestinationPath = $destinationPath
@@ -105,8 +132,8 @@ Class BackupTest:DatabaseShipping {
    #$myShip=New-DatabaseShipping -SourceInstanceConnectionString "Data Source=LSNR.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-DR-DGV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -FileRepositoryUncPath "\\db-dr-dgv01\Backups" -DestinationRestoreMode ([DatabaseRecoveryMode]::RESTOREONLY) -LogWrite $myLogWriter -LimitMsdbScanToRecentHours 24 -RestoreFilesToIndividualFolders
 
 #region Functions
-    hidden[datetime] GenerateRandomDate([int]$minNumber, [int]$maxNumber) {
-    return (Get-Date).AddDays(- (Get-Random -Minimum $minNumber -Maximum $maxNumber))
+    hidden[datetime] GenerateRandomDate([int]$MinNumber, [int]$MaxNumber) {
+    return (Get-Date).AddDays(- (Get-Random -Minimum $MinNumber -Maximum $MaxNumber))
     $this.LogWriter()
     }
     hidden [bool]Create_BackupTestCatalog() {   #Create Log Table to Write Logs of transfered files in a table, if not exists
@@ -202,6 +229,31 @@ Class BackupTest:DatabaseShipping {
         Write-Host $ResultCheckTest
         
         return $null -eq $ResultCheckTest
+    }
+    [void] SaveResultToBackupTestCatalog($DatabaseName,$RestoreInstance) {
+        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $myTestResultCode = [int]$this.TestResult
+        $myTestResultDescription = $this.TestResult.ToString()  
+        [BackupCatalogItem[]]$myAnswer=$null
+        [string]$myCommand=$null
+        $myCommand = "
+        DECLARE @myRecoveryDateTime AS DateTime
+        DECLARE @myBackupStartTime AS DateTime
+        SET @myBackupStartTime = CAST('$($this.BackupStartTime)' AS DATETIME)
+        SET @myRecoveryDateTime = CAST('$($this.RecoveryDate)' AS DATETIME)
+        INSERT INTO [dbo].[BackupTestResult] ([InstanceName], [DatabaseName], [TestResult], [TestResultDescription], [BackupRestoredTime], [BackupStartTime], [LogFilePath])
+        VALUES (N'"+ $RestoreInstance +"', N'"+ $DatabaseName +"', CAST('"+$myTestResultCode+"' AS INT), N'$myTestResultDescription', @myRecoveryDateTime, @myBackupStartTime, N'$($this.ErrorFileAddress)')
+        "
+   
+        Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Database $this.DatabaseReportStore -Query $myInsertCommand -OutputSqlErrors $true -QueryTimeout 0 -EncryptConnection
+        try{
+            Write-Verbose $myCommand
+            Invoke-Sqlcmd -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
+        }Catch{
+            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+            $myAnswer=[bool]$false
+        }
+        return $myAnswer
         }
 
     [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
