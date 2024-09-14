@@ -1,6 +1,15 @@
 Using module .\SqlDeepLogWriter.psm1
 Using module .\SqlDeepDatabaseShipping.psm1
 Using module .\SqlDeepCommon.psm1
+
+enum TestResult {
+    Succseed = 1
+    CopyFail = -1
+    RestoreFullBackupFail = -2
+    RestoreDiffBackupFail = -3
+    RestoreLogBackupFail = -4
+    CheckDbFail = -5
+    }
 <#
 Class BackupTest:DatabaseShipping {
     [string]$Text;
@@ -175,6 +184,26 @@ Class BackupTest:DatabaseShipping {
     }
     return $myResult
     }
+    [bool] CheckDB($ExecutionId,$DestinationDatabaseName) {
+        $myCommand = "
+        DECLARE @myDBName AS NVARCHAR(100)
+        DECLARE @myExecutionId INT
+        SET @myExecutionId = CAST('" + $ExecutionId.ToString() + "' AS INT);
+        SET @myDBName = CAST(CONCAT('"+$DestinationDatabaseName +"', '_', @myExecutionId) AS NVARCHAR(100));
+        
+        IF (SELECT state_desc FROM sys.databases WHERE name = @myDBName) = 'RESTORING'
+        RESTORE DATABASE @myDBName WITH RECOVERY;
+        
+        DBCC CHECKDB (@myDBName) WITH NO_INFOMSGS;
+        "
+        
+        $ResultCheckTest = Invoke-Sqlcmd -ServerInstance $this.InstanceName -Database "master" -Query $myCommand -OutputSqlErrors $true -OutputAs DataTables -ErrorAction Stop -EncryptConnection
+        
+        Write-Host $ResultCheckTest
+        
+        return $null -eq $ResultCheckTest
+        }
+
     [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
         [int]$myMaximumNumber = 1000
         [int]$myExecutionId =$this.GenerateRandomDate($this.MinimumDate,$myMaximumNumber)
