@@ -81,8 +81,8 @@ Class BackupTest:DatabaseShipping {
         [Int]$MinimumDate ;
         [Int]$MaximumDate ;
         [string]$RestoreInstance;
-
-        # 
+        [datetime]$RestoreTime;
+         
         # [string]$MonitoringServer
         # [string]$DatabaseReportStore
         # [string]$DestinationPath
@@ -95,7 +95,9 @@ Class BackupTest:DatabaseShipping {
         [string]$myBackupTestCatalogTableName = $null,
         [Int]$myMinimumDate = 1,
         [Int]$myMaximumDate = 5,
-        [string]$myRestoreInstance
+        [string]$myRestoreInstance,
+        [datetime]$myRestoreTime
+        
         # [string]$monitoringServer,
         # [string]$databaseReportStore,
         # [string]$destinationPath,
@@ -108,6 +110,8 @@ Class BackupTest:DatabaseShipping {
         $this.MaximumDate =$myMinimumDate
         $this.MaximumDate =$myMaximumDate
         $this.RestoreInstance = $myRestoreInstance
+        $this.RestoreTime=$myRestoreTime
+
         # $this.MonitoringServer = $monitoringServer
         # $this.DatabaseReportStore = $databaseReportStore
         # $this.DestinationPath = $destinationPath
@@ -234,33 +238,37 @@ Class BackupTest:DatabaseShipping {
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         $myTestResultCode = [int]$this.TestResult
         $myTestResultDescription = $this.TestResult.ToString()  
-        [BackupCatalogItem[]]$myAnswer=$null
         [string]$myCommand=$null
         $myCommand = "
         DECLARE @myRecoveryDateTime AS DateTime
         DECLARE @myBackupStartTime AS DateTime
         SET @myBackupStartTime = CAST('$($this.BackupStartTime)' AS DATETIME)
-        SET @myRecoveryDateTime = CAST('$($this.RecoveryDate)' AS DATETIME)
+        SET @myRecoveryDateTime = CAST('$($this.RestoreTime)' AS DATETIME)
         INSERT INTO [dbo].[BackupTestResult] ([InstanceName], [DatabaseName], [TestResult], [TestResultDescription], [BackupRestoredTime], [BackupStartTime], [LogFilePath])
         VALUES (N'"+ $RestoreInstance +"', N'"+ $DatabaseName +"', CAST('"+$myTestResultCode+"' AS INT), N'$myTestResultDescription', @myRecoveryDateTime, @myBackupStartTime, N'$($this.ErrorFileAddress)')
         "
    
-        Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Database $this.DatabaseReportStore -Query $myInsertCommand -OutputSqlErrors $true -QueryTimeout 0 -EncryptConnection
+       # Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Database $this.DatabaseReportStore -Query $myInsertCommand -OutputSqlErrors $true -QueryTimeout 0 -EncryptConnection
         try{
             Write-Verbose $myCommand
             Invoke-Sqlcmd -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
         }Catch{
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-            $myAnswer=[bool]$false
         }
-        return $myAnswer
-        }
+    }
+    [void] DropDatabase ($databaseName){
+
+    }
 
     [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
         [int]$myMaximumNumber = 1000
         [int]$myExecutionId =$this.GenerateRandomDate($this.MinimumDate,$myMaximumNumber)
         [string]$myDestinationDatabaseName=$DatabaseName+$myExecutionId
-        
+       
+        if($null -eq $this.RestoreTime)
+        {
+            $this.RestoreTime=GenerateRandomDate($this.MinimumDate,$this.MaximumDate)
+        }
         $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
         
     }
