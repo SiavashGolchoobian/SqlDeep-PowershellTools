@@ -41,6 +41,8 @@ Class BackupTest:DatabaseShipping {
         BackupTest() : base() {}
         # Additional initialization if needed
         [string]$BackupTestCatalogTableName;
+        [Int]$MinimumDate ;
+        [Int]$MaximumDate 
 
 
         # [string]$RestoreInstance
@@ -53,8 +55,10 @@ Class BackupTest:DatabaseShipping {
         # [int]$MaximumTryCountToFindUncheckedBackup = 5
 
     BackupTest(
-        [string]$myBackupTestCatalogTableName = $null
-        
+        [string]$myBackupTestCatalogTableName = $null,
+        [Int]$myMinimumDate = 1,
+        [Int]$myMaximumDate = 5
+
         # [string]$restoreInstance,
         # [string]$monitoringServer,
         # [string]$databaseReportStore,
@@ -65,6 +69,8 @@ Class BackupTest:DatabaseShipping {
     ) 
     {
         $this.BackupTestCatalogTableName = $myBackupTestCatalogTableName   
+        $this.MaximumDate =$myMinimumDate
+        $this.MaximumDate =$myMaximumDate
         # $this.RestoreInstance = $restoreInstance
         # $this.MonitoringServer = $monitoringServer
         # $this.DatabaseReportStore = $databaseReportStore
@@ -93,30 +99,6 @@ Class BackupTest:DatabaseShipping {
     hidden[datetime] GenerateRandomDate([int]$minNumber, [int]$maxNumber) {
     return (Get-Date).AddDays(- (Get-Random -Minimum $minNumber -Maximum $maxNumber))
     $this.LogWriter()
-    }
-    hidden[bool] IsTested([string]$InstanceName, [datetime]$RecoveryDateTime, [string]$DatabaseName,[string]$RestoreInstance,[string]$DatabaseReportStore) {
-        $myQuery = 
-        "
-        DECLARE @myHashValue AS INT
-        DECLARE @myRecoveryDateTime AS DateTime
-        DECLARE @myDBName AS NVARCHAR(50)
-
-        SET @myHashValue = BINARY_CHECKSUM('"+ $DatabaseName + "','"+ $InstanceName + "')
-        SET @myRecoveryDateTime = CAST('" + $RecoveryDateTime + "' AS DATETIME)
-
-        SELECT COUNT(1) As myResult
-        FROM [dbo].[BackupTestResult]
-        Where [HashValue] = @myHashValue 
-        AND @myRecoveryDateTime BETWEEN [BackupStartTime] AND [BackupRestoredTime]
-        "
-    $myResultCheckDate = Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Database $this.DatabaseReportStore -Query $myQuery -OutputSqlErrors $true -OutputAs DataRows
-    if ($myResultCheckDate[0] -eq 0 ) {
-        $myResult = $false
-    }
-    else {
-        $myResult = $true
-    }
-    return $myResult
     }
     hidden [bool]Create_BackupTestCatalog() {   #Create Log Table to Write Logs of transfered files in a table, if not exists
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
@@ -169,65 +151,38 @@ Class BackupTest:DatabaseShipping {
         }
         return $myAnswer
     }
-    
+    hidden[bool] IsTested([string]$SourceInstanceName, [datetime]$RecoveryDateTime, [string]$DatabaseName,[string]$RestoreInstance,[string]$DatabaseReportStore) {
+        $myQuery = 
+        "
+        DECLARE @myHashValue AS INT
+        DECLARE @myRecoveryDateTime AS DateTime
+        DECLARE @myDBName AS NVARCHAR(50)
+
+        SET @myHashValue = BINARY_CHECKSUM('"+ $DatabaseName + "','"+ $SourceInstanceName + "')
+        SET @myRecoveryDateTime = CAST('" + $RecoveryDateTime + "' AS DATETIME)
+
+        SELECT COUNT(1) As myResult
+        FROM [dbo].[BackupTestResult]
+        Where [HashValue] = @myHashValue 
+        AND @myRecoveryDateTime BETWEEN [BackupStartTime] AND [BackupRestoredTime]
+        "
+    $myResultCheckDate = Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Database $this.DatabaseReportStore -Query $myQuery -OutputSqlErrors $true -OutputAs DataRows
+    if ($myResultCheckDate[0] -eq 0 ) {
+        $myResult = $false
+    }
+    else {
+        $myResult = $true
+    }
+    return $myResult
+    }
     [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
-        [string]$myDestinationDatabaseName=$DatabaseName+'_01'
+        [int]$myMin = 1,
+        [int]$myMax = 1000,
+        [int]$myExecutionId =$this.GenerateRandomDate($myMin,$myMax)
+        [string]$myDestinationDatabaseName=$DatabaseName+$myExecutionId
         
         $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
         
     }
 #endregion
 }
-<#
-    [bool]CheckDatabaseRestored([string]$databaseName) {
-        # Implement your logic to check if the database has been restored
-        # For example, you might query the database to see if it exists and is accessible
-        $dbExists = Test-Connection -ComputerName $databaseName -Count 1 -Quiet
-        if ($dbExists) {
-            Write-Host "Database $databaseName is restored and accessible."
-            return $true
-        } else {
-            Write-Host "Database $databaseName is not restored or not accessible."
-            return $false
-        }
-    }
-#>
-# class MyDatabaseShipping : DatabaseShipping {
-#     # Constructor
-#     MyDatabaseShipping() : base() {
-#         # Additional initialization if needed
-#     }
-# }
-
-
-
-# $myShip=MyDatabaseShipping -SourceInstanceConnectionString "Data Source=LSNR.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-DR-DGV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -FileRepositoryUncPath "\\db-dr-dgv01\Backups" -DestinationRestoreMode ([DatabaseRecoveryMode]::RESTOREONLY) -LogWrite $myLogWriter -LimitMsdbScanToRecentHours 24 -RestoreFilesToIndividualFolders
-
-# #region Functions
-# Function New-BackupTest {
-#     param (
-#     [string]$SourceDatabase,
-#     [string]$DestinationServer,
-#     [string]$BackupPath,
-#     [string]$Credential
-#     )
-
-#     # Check if the parameters are provided
-#     if (-not $SourceDatabase -or -not $DestinationServer -or -not $BackupPath) {
-#     exit
-#     }
-
-#     # Use the ShipDatabase function from the SqlDeepDatabaseShipping module
-#     try {
-#     ShipDatabase -SourceDatabase $SourceDatabase -DestinationServer $DestinationServer -BackupPath $BackupPath -Credential $Credential
-#     $myLogWriter=New-LogWriter -EventSource ($env:computername) -Module "DatabaseShipping" -LogToConsole -LogToFile -LogFilePath "U:\Audit\DatabaseShipping_{Database}_{Date}.txt" -LogToTable -LogInstanceConnectionString "Data Source=DB-MN-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=EventLog;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogTableName "[dbo].[Events]"
-#     $myShip=New-DatabaseShipping -SourceInstanceConnectionString "Data Source=LSNR.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-DR-DGV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -FileRepositoryUncPath "\\db-dr-dgv01\Backups" -DestinationRestoreMode ([DatabaseRecoveryMode]::RESTOREONLY) -LogWrite $myLogWriter -LimitMsdbScanToRecentHours 24 -RestoreFilesToIndividualFolders
-
-#     } catch {
-#     Write-Host "An error occurred: $_"
-#     }
-# }
-# #endregion
-# #region Export
-# Export-ModuleMember -Function New-BackupTest
-# #endregion
