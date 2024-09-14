@@ -176,9 +176,8 @@ Class BackupTest:DatabaseShipping {
     return $myResult
     }
     [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
-        [int]$myMin = 1,
-        [int]$myMax = 1000,
-        [int]$myExecutionId =$this.GenerateRandomDate($myMin,$myMax)
+        [int]$myMaximumNumber = 1000
+        [int]$myExecutionId =$this.GenerateRandomDate($this.MinimumDate,$myMaximumNumber)
         [string]$myDestinationDatabaseName=$DatabaseName+$myExecutionId
         
         $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
