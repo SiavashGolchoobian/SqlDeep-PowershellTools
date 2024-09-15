@@ -123,7 +123,7 @@ Class BackupTest:DatabaseShipping {
    {  
         $this.BackupTestCatalogTableName = $BackupTestCatalogTableName
 
-         $this.RestoreInstance = $restoreInstance
+        $this.RestoreInstance = $restoreInstance
         # $this.MonitoringServer = $monitoringServer
         # $this.DatabaseReportStore = $databaseReportStore
         # $this.DestinationPath = $destinationPath
@@ -191,7 +191,7 @@ Class BackupTest:DatabaseShipping {
         }
         return $myAnswer
     }
-    hidden[bool] IsTested([string]$SourceInstanceName, [datetime]$RecoveryDateTime, [string]$DatabaseName,[string]$RestoreInstance,[string]$DatabaseReportStore) {
+    hidden [bool] IsTested([string]$SourceInstanceName, [datetime]$RecoveryDateTime, [string]$DatabaseName,[string]$RestoreInstance,[string]$DatabaseReportStore) {
         $myQuery = 
         "
         DECLARE @myHashValue AS INT
@@ -215,7 +215,7 @@ Class BackupTest:DatabaseShipping {
     }
     return $myResult
     }
-    [bool] CheckDB($ExecutionId,$DestinationDatabaseName) {
+    hidden [bool] CheckDB($ExecutionId,$DestinationDatabaseName) {
         $myCommand = "
         DECLARE @myDBName AS NVARCHAR(100)
         DECLARE @myExecutionId INT
@@ -234,7 +234,7 @@ Class BackupTest:DatabaseShipping {
         
         return $null -eq $ResultCheckTest
     }
-    [void] SaveResultToBackupTestCatalog($DatabaseName,$RestoreInstance) {
+    hidden [void] SaveResultToBackupTestCatalog($DatabaseName,$RestoreInstance) {
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         $myTestResultCode = [int]$this.TestResult
         $myTestResultDescription = $this.TestResult.ToString()  
@@ -256,8 +256,18 @@ Class BackupTest:DatabaseShipping {
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         }
     }
-    [void] DropDatabase ($databaseName){
+    hidden [void] DropDatabase ($DatabaseName){
+        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        [string]$myCommand=
 
+        "
+            DROP DATABASE IF EXISTS [" + $DatabaseName + "]
+        "
+        try{
+            Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Query $myCommand -Database "master" -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+        }Catch{
+            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+        }
     }
 
     [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
