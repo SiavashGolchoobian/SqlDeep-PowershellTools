@@ -5,6 +5,7 @@ Using module .\SqlDeepCommon.psm1
 enum TestResult {
     RestoreSuccseed = 1
     RestoreFail = -1
+    CheckDbSuccseed = 2
     CheckDbFail = -2
     }
 <#
@@ -212,13 +213,12 @@ Class BackupTest:DatabaseShipping {
     }
     return $myResult
     }
-    hidden [bool] CheckDB($ExecutionId,$DestinationDatabaseName) {
+    hidden [bool] CheckDB([string]$DestinationDatabaseName) {
         $myCommand = "
         DECLARE @myDBName AS NVARCHAR(100)
         DECLARE @myExecutionId INT
-        SET @myExecutionId = CAST('" + $ExecutionId.ToString() + "' AS INT);
-        SET @myDBName = CAST(CONCAT('"+$DestinationDatabaseName +"', '_', @myExecutionId) AS NVARCHAR(100));
-        
+        SET @myDBName = CAST("+$DestinationDatabaseName +") AS NVARCHAR(100));
+
         IF (SELECT state_desc FROM sys.databases WHERE name = @myDBName) = 'RESTORING'
         RESTORE DATABASE @myDBName WITH RECOVERY;
         
@@ -233,7 +233,6 @@ Class BackupTest:DatabaseShipping {
     }
     hidden [void] SaveResultToBackupTestCatalog([string]$DatabaseName,[string]$RestoreInstance,[TestResult]$TestResult) {
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-
 
         $myCommand = "
         DECLARE @myRecoveryDateTime AS DateTime
@@ -306,8 +305,8 @@ Class BackupTest:DatabaseShipping {
         #Has this database been tested on this date?
         $this.LogWriter.Write($this.LogStaticMessage+('in time :' + $this.RestoreTime+'does not have any test record'),[LogType]::INF);
         if(IsTested($mySourceInstanceName,$this.RestoreTime,$DatabaseName) -eq $false){
-            #Restore database to destination
-            try {
+           
+            try { #Restore database to destination
                 $this.LogWriter.Write($this.LogStaticMessage+('restored database with name:' + $myDestinationDatabaseName),[LogType]::INF);
                 $this.DestinationRestoreMode=[DatabaseRecoveryMode]::RECOVERY
                 $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
@@ -316,14 +315,29 @@ Class BackupTest:DatabaseShipping {
                 SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
             }
             catch {
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
                 $myTestResult = [TestResult]::RestoreFailed
                 SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
             }
+            try { #Checkdb 
+                $this.LogWriter.Write($this.LogStaticMessage+('checkdb on database:' + $myDestinationDatabaseName),[LogType]::INF); 
+                CheckDB($myDestinationDatabaseName)
+                $myTestResult = [TestResult]::CheckDbSuccseed
+                SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
+            }
+            catch {
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                $myTestResult = [TestResult]::CheckDbFail
+                SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
+            }
+            try { #Remove database
+                $this.LogWriter.Write($this.LogStaticMessage+('remove database:' + $myDestinationDatabaseName),[LogType]::INF); 
+                DropDatabase($myDestinationDatabaseName)
+            }
+            catch {
+                $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+            }
 
-            
-
-          
-            # check db 
             # drop database
         }        
 
