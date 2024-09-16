@@ -3,12 +3,9 @@ Using module .\SqlDeepDatabaseShipping.psm1
 Using module .\SqlDeepCommon.psm1
 
 enum TestResult {
-    Succseed = 1
-    CopyFail = -1
-    RestoreFullBackupFail = -2
-    RestoreDiffBackupFail = -3
-    RestoreLogBackupFail = -4
-    CheckDbFail = -5
+    RestoreSuccseed = 1
+    RestoreFail = -1
+    CheckDbFail = -2
     }
 <#
 Class BackupTest:DatabaseShipping {
@@ -191,7 +188,7 @@ Class BackupTest:DatabaseShipping {
         }
         return $myAnswer
     }
-    hidden [bool] IsTested([string]$SourceInstanceName, [datetime]$RecoveryDateTime, [string]$DatabaseName,[string]$RestoreInstance,[string]$DatabaseReportStore) {
+    hidden [bool] IsTested([string]$SourceInstanceName, [datetime]$RecoveryDateTime, [string]$DatabaseName) {
         $myQuery = 
         "
         DECLARE @myHashValue AS INT
@@ -206,7 +203,7 @@ Class BackupTest:DatabaseShipping {
         Where [HashValue] = @myHashValue 
         AND @myRecoveryDateTime BETWEEN [BackupStartTime] AND [BackupRestoredTime]
         "
-    $myResultCheckDate = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString  -Database $this.DatabaseReportStore -Query $myQuery -OutputSqlErrors $true -OutputAs DataRows
+    $myResultCheckDate = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString  -Database $this.BackupTestCatalogTableName -Query $myQuery -OutputSqlErrors $true -OutputAs DataRows
     if ($myResultCheckDate[0] -eq 0 ) {
         $myResult = $false
     }
@@ -234,18 +231,17 @@ Class BackupTest:DatabaseShipping {
         
         return $null -eq $ResultCheckTest
     }
-    hidden [void] SaveResultToBackupTestCatalog($DatabaseName,$RestoreInstance) {
+    hidden [void] SaveResultToBackupTestCatalog([string]$DatabaseName,[string]$RestoreInstance,[TestResult]$TestResult) {
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-        $myTestResultCode = [int]$this.TestResult
-        $myTestResultDescription = $this.TestResult.ToString()  
-        [string]$myCommand=$null
+
+
         $myCommand = "
         DECLARE @myRecoveryDateTime AS DateTime
         DECLARE @myBackupStartTime AS DateTime
         SET @myBackupStartTime = CAST('$($this.BackupStartTime)' AS DATETIME)
         SET @myRecoveryDateTime = CAST('$($this.RestoreTime)' AS DATETIME)
         INSERT INTO [dbo].[BackupTestResult] ([InstanceName], [DatabaseName], [TestResult], [TestResultDescription], [BackupRestoredTime], [BackupStartTime], [LogFilePath])
-        VALUES (N'"+ $RestoreInstance +"', N'"+ $DatabaseName +"', CAST('"+$myTestResultCode+"' AS INT), N'$myTestResultDescription', @myRecoveryDateTime, @myBackupStartTime, N'$($this.ErrorFileAddress)')
+        VALUES (N'"+ $RestoreInstance +"', N'"+ $DatabaseName +"', "+($TestResult.value__)+","+ $TestResult+", @myRecoveryDateTime, @myBackupStartTime, N'$($this.ErrorFileAddress)')
         "
    
        # Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Database $this.DatabaseReportStore -Query $myInsertCommand -OutputSqlErrors $true -QueryTimeout 0 -EncryptConnection
@@ -291,15 +287,14 @@ Class BackupTest:DatabaseShipping {
             $this.LogWriter.Write($this.LogStaticMessage+'Source server name is empty.',[LogType]::ERR)
             throw 'Source server name is empty.'
         }
-
         
         #Initial Log Modules
         Write-Verbose ('===== Testbackup database  ' + $DatabaseName + ' as ' + $mySourceInstanceName + ' started. =====')
-        $this.LogStaticMessage= "{""SourceDB"":""" + $DatabaseName + """,""DestinationDB"":""" + $myDestinationDatabaseName+"""} : "
-        $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$myDestinationDatabaseName)
+        $this.LogStaticMessage= "{""SourceDB"":""" + $DatabaseName + ' as ' + """,""SourceInstance"":""" + $mySourceInstanceName+"""} : "
+       # $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$myDestinationDatabaseName)
         $this.LogWriter.Reinitialize()
         $this.LogWriter.Write($this.LogStaticMessage+'===== BackupTest process started... ===== ', [LogType]::INF) 
-        $this.LogWriter.Write($this.LogStaticMessage+('TestDatabase ' + $DatabaseName + ' as ' + $myDestinationDatabaseName), [LogType]::INF) 
+        $this.LogWriter.Write($this.LogStaticMessage+('TestDatabase ' + $DatabaseName + ' as ' + $mySourceInstanceName), [LogType]::INF) 
         $this.LogWriter.Write($this.LogStaticMessage+'Initializing EventsTable.Create.', [LogType]::INF) 
         
        #$testResult = [SaveResultToBackupTestCatalog]::Succseed 
@@ -308,8 +303,30 @@ Class BackupTest:DatabaseShipping {
             $this.RestoreTime=GenerateRandomDate($this.MinimumDate,$this.MaximumDate)
             $this.LogWriter.Write($this.LogStaticMessage+('RestoreTime is :' + $this.RestoreTime),[LogType]::INF);
         }
-        $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
-        
+        #Has this database been tested on this date?
+        $this.LogWriter.Write($this.LogStaticMessage+('in time :' + $this.RestoreTime+'does not have any test record'),[LogType]::INF);
+        if(IsTested($mySourceInstanceName,$this.RestoreTime,$DatabaseName) -eq $false){
+            #Restore database to destination
+            try {
+                $this.LogWriter.Write($this.LogStaticMessage+('restored database with name:' + $myDestinationDatabaseName),[LogType]::INF);
+                $this.DestinationRestoreMode=[DatabaseRecoveryMode]::RECOVERY
+                $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
+                $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
+                $myTestResult = [TestResult]::RestoreSuccseed
+                SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
+            }
+            catch {
+                $myTestResult = [TestResult]::RestoreFailed
+                SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
+            }
+
+            
+
+          
+            # check db 
+            # drop database
+        }        
+
     }
 #endregion
 }
