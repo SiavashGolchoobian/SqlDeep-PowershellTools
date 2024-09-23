@@ -1355,6 +1355,7 @@ Class DatabaseShipping {
             [string]$myCurrentMachineName=([Environment]::MachineName).ToUpper()
             [string]$mySourceBackupMachineName=$null
             [string]$mySourceBackupFilePath=$null
+            $myMediaSetHashTable=@{}
             $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($this.FileRepositoryUncPath)
 
             #--=======================Validate input parameters
@@ -1432,13 +1433,16 @@ Class DatabaseShipping {
             $myCurrentMachineName=([Environment]::MachineName).ToUpper()
             $mySourceBackupMachineName = $this.Database_GetServerName($this.SourceInstanceConnectionString).ToUpper()
             foreach ($myBackupFile in $myBackupFileList){
-                if ($myCurrentMachineName -eq $mySourceBackupMachineName) {     #Decide to use local path of source server backup file(s) or UNC path of backup file(s)
-                    $mySourceBackupFilePath=$myBackupFile.FilePath
-                } else {
-                    $mySourceBackupFilePath=$myBackupFile.RemoteSourceFilePath
+                $myMediaSetHashTable[$myBackupFile.MediaSetId]+=1  #Count number of files transferred for each mediasetid (this variable is useful for preventing multiple backup file copy)
+                if ($myMediaSetHashTable[$myBackupFile.MediaSetId] -eq 1) { #Copy only untransfeered file (in case of one backup file for multiple backupsets)
+                    if ($myCurrentMachineName -eq $mySourceBackupMachineName) {     #Decide to use local path of source server backup file(s) or UNC path of backup file(s)
+                        $mySourceBackupFilePath=$myBackupFile.FilePath
+                    } else {
+                        $mySourceBackupFilePath=$myBackupFile.RemoteSourceFilePath
+                    }
+                    Copy-Item -Path $mySourceBackupFilePath -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop
+                    $this.LogWriter.Write($this.LogStaticMessage+('Copy backup file from ' + $mySourceBackupFilePath + ' to ' + ($this.FileRepositoryUncPath)),[LogType]::INF)
                 }
-                Copy-Item -Path $mySourceBackupFilePath -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop
-                $this.LogWriter.Write($this.LogStaticMessage+('Copy backup file from ' + $mySourceBackupFilePath + ' to ' + ($this.FileRepositoryUncPath)),[LogType]::INF)
             }
 
             #--=======================Drop not in restoring mode databases
