@@ -1580,6 +1580,7 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
         [BackupFile[]]$myUntransferredBackups=$null
         [System.Collections.ArrayList]$myFolderList = $null
         [string]$myCurrentMachineName=([Environment]::MachineName).ToUpper()
+        $myMediaSetHashTable=@{}
         $this.Databases=$this.Databases | Clear-SqlParameter -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign  #Clear database names
         $this.LogWriter.Write($this.LogStaticMessage+'Selected Databases are:', [LogType]::INF)
         $this.Databases | ForEach-Object{$this.LogWriter.Write($this.LogStaticMessage+'     '+$_, [LogType]::INF) }
@@ -1670,8 +1671,9 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
                                                                 {
                                                                     $mySendResult=$this.Operate_OverFtp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile)
                                                                     if($mySendResult -eq $true) {
+                                                                        $myMediaSetHashTable[$_.MediaSetId]+=1  #Count number of files transferred for each mediasetid (this variable is useful for multiple backup files control)
                                                                         $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
-                                                                        $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
+                                                                        if ($myMediaSetHashTable[$_.MediaSetId] -eq $_.MaxFamilySequenceNumber){$this.Set_BackupsCatalogItemAsShippedOnMsdb($_)}    #Update msdb status only if all files related to backup are trasferred
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
                                                                 }
@@ -1684,8 +1686,9 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
                                                                 {
                                                                     $mySendResult=$this.Operate_OverSftp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile,$this.SshHostKeyFingerprint)
                                                                     if($mySendResult -eq $true) {
+                                                                        $myMediaSetHashTable[$_.MediaSetId]+=1  #Count number of files transferred for each mediasetid (this variable is useful for multiple backup files control)
                                                                         $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
-                                                                        $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
+                                                                        if ($myMediaSetHashTable[$_.MediaSetId] -eq $_.MaxFamilySequenceNumber){$this.Set_BackupsCatalogItemAsShippedOnMsdb($_)}    #Update msdb status only if all files related to backup are trasferred
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
                                                                 }
@@ -1698,8 +1701,9 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
                                                                 {
                                                                     $mySendResult=$this.Operate_OverScp([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,($myPath+'/'+$_.FileName),$mySourceFile,$this.SshHostKeyFingerprint)
                                                                     if($mySendResult -eq $true) {
+                                                                        $myMediaSetHashTable[$_.MediaSetId]+=1  #Count number of files transferred for each mediasetid (this variable is useful for multiple backup files control)
                                                                         $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
-                                                                        $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
+                                                                        if ($myMediaSetHashTable[$_.MediaSetId] -eq $_.MaxFamilySequenceNumber){$this.Set_BackupsCatalogItemAsShippedOnMsdb($_)}    #Update msdb status only if all files related to backup are trasferred
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
                                                                 }
@@ -1712,8 +1716,9 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
                                                                 {
                                                                     $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,('A','B'),($myPath+'\'+$_.FileName),$mySourceFile)
                                                                     if($mySendResult -eq $true) {
+                                                                        $myMediaSetHashTable[$_.MediaSetId]+=1  #Count number of files transferred for each mediasetid (this variable is useful for multiple backup files control)
                                                                         $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
-                                                                        $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
+                                                                        if ($myMediaSetHashTable[$_.MediaSetId] -eq $_.MaxFamilySequenceNumber){$this.Set_BackupsCatalogItemAsShippedOnMsdb($_)}    #Update msdb status only if all files related to backup are trasferred
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
                                                                 } 
@@ -1726,8 +1731,9 @@ hidden [BackupCatalogItem[]]Get_DepricatedCatalogItems ([string]$MachineName,[st
                                                                 {
                                                                     $mySendResult=$this.Operate_OverUnc([HostOperation]::UPLOAD,$this.Destination,$this.DestinationCredential,'A',($myPath+'\'+$_.FileName),$mySourceFile)
                                                                     if($mySendResult -eq $true) {
+                                                                        $myMediaSetHashTable[$_.MediaSetId]+=1  #Count number of files transferred for each mediasetid (this variable is useful for multiple backup files control)
                                                                         $this.LogWriter.Write($this.LogStaticMessage+'Update BackupCatalogItem and MSDB.',[LogType]::INF)
-                                                                        $this.Set_BackupsCatalogItemAsShippedOnMsdb($_)
+                                                                        if ($myMediaSetHashTable[$_.MediaSetId] -eq $_.MaxFamilySequenceNumber){$this.Set_BackupsCatalogItemAsShippedOnMsdb($_)}    #Update msdb status only if all files related to backup are trasferred
                                                                         $this.Set_ShippedBackupsCatalogItemStatus($_)
                                                                     }
                                                                 } 
