@@ -209,6 +209,7 @@ Class BackupTest:DatabaseShipping {
         $this.BackupTestCatalogTableName=Clear-SqlParameter -ParameterValue $this.BackupTestCatalogTableName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
         $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
         $SourceInstanceName=Clear-SqlParameter -ParameterValue $SourceInstanceName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+        $myResult=[bool]$false
         [string]$myQuery = 
         "
         DECLARE @myHashValue AS INT
@@ -223,13 +224,18 @@ Class BackupTest:DatabaseShipping {
         Where [HashValue] = @myHashValue 
         AND @myRecoveryDateTime BETWEEN [BackupStartTime] AND [BackupRestoredTime]
         "
-    $myResultCheckDate = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString  -Database $this.BackupTestCatalogTableName -Query $myQuery -OutputSqlErrors $true -OutputAs DataRows
-    if ($myResultCheckDate[0] -eq 0 ) {
-        $myResult = $false
-    }
-    else {
-        $myResult = $true
-    }
+        try{
+            $myResultCheckDate = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString  -Database $this.BackupTestCatalogTableName -Query $myQuery -OutputSqlErrors $true -OutputAs DataRows
+            if ($myResultCheckDate[0] -eq 0 ) {
+                $myResult = $false
+            }
+            else {
+                $myResult = $true
+            }
+        }Catch{
+            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+            $myResult=[bool]$false
+        }
     return $myResult
     }
     hidden [bool] CheckDB([string]$DestinationDatabaseName) {
@@ -286,7 +292,10 @@ Class BackupTest:DatabaseShipping {
 
     [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
         #Set Constr
-        [int]$myExecutionId =Get-Random -Minimum 1 -Maximum 100
+        [int]$myExecutionId =Get-Random -Minimum 1 -Maximum 1000
+        $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+        $SourceConnectionString =Clear-SqlParameter -ParameterValue $SourceConnectionString -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+      
         [string]$myDestinationDatabaseName=$DatabaseName+$myExecutionId
         
         #Determine candidate server(s)
