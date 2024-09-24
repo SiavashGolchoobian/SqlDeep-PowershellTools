@@ -138,9 +138,15 @@ Class BackupTest:DatabaseShipping {
     hidden[datetime] GenerateRandomDate([DateTime]$StartDate, [DateTime]$EndDate) {
         [DateTime]$myStartDate = $StartDate
         [DateTime]$myEndDate = $EndDate
-    
-        if ($myStartDate -gt $myEndDate) {  
-            Write-Host'StartDate must be less than or equal to EndDate Set random date between today and 5 days ago'
+        
+        if($null -eq $myStartDate -and $null -eq $myEndDate)
+        {
+            $this.LogWriter.Write($this.LogStaticMessage+'StartDate and EndDate is empty . set random date between 5 days ago.', [LogType]::INF)
+            $myStartDate =  (Get-Date).AddDays(-5) 
+            $myEndDate = Get-Date
+        }
+        elseif ($myStartDate -gt $myEndDate) {  
+            $this.LogWriter.Write($this.LogStaticMessage+'StartDate must be less than or equal to EndDate .', [LogType]::INF)
             $myStartDate=$EndDate
             $myEndDate=$StartDate
         }  
@@ -280,8 +286,7 @@ Class BackupTest:DatabaseShipping {
 
     [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
         #Set Constr
-        [int]$myMaximumNumber = 1000
-        [int]$myExecutionId =$this.GenerateRandomDate($this.StartDate,$myMaximumNumber)
+        [int]$myExecutionId =Get-Random -Minimum 1 -Maximum 100
         [string]$myDestinationDatabaseName=$DatabaseName+$myExecutionId
         
         #Determine candidate server(s)
