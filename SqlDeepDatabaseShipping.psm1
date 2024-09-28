@@ -1433,8 +1433,8 @@ Class DatabaseShipping {
             $myCurrentMachineName=([Environment]::MachineName).ToUpper()
             $mySourceBackupMachineName = $this.Database_GetServerName($this.SourceInstanceConnectionString).ToUpper()
             foreach ($myBackupFile in $myBackupFileList){
-                $myMediaSetHashTable[$myBackupFile.MediaSetId]+=1  #Count number of files transferred for each mediasetid (this variable is useful for preventing multiple backup file copy)
-                if ($myMediaSetHashTable[$myBackupFile.MediaSetId] -eq 1) { #Copy only untransfeered file (in case of one backup file for multiple backupsets)
+                $myMediaSetHashTable[$myBackupFile.FilePath]+=1  #Count number of files transferred for each mediasetid (this variable is useful for preventing multiple backup file copy)
+                if ($myMediaSetHashTable[$myBackupFile.FilePath] -eq 1) { #Copy only untransfeered file (in case of one backup file for multiple backupsets)
                     if ($myCurrentMachineName -eq $mySourceBackupMachineName) {     #Decide to use local path of source server backup file(s) or UNC path of backup file(s)
                         $mySourceBackupFilePath=$myBackupFile.FilePath
                     } else {
