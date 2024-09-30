@@ -459,8 +459,95 @@
         }
         end {}
     }
+    Function Get-ServerInfoFromRegistaryServer {
+        Param (
+            [parameter(Mandatory = $true)][string]$MonitoringConnectionString,
+            [parameter(Mandatory = $true)][string]$ExeptionList,
+            [parameter(Mandatory = $false)][string]$FilterGroup
+        )
+        $myMonitoringInstancInfo=Get-InstanceInformation -ConnectionString $MonitoringConnectionString -ShowRelatedInstanceOnly
+        $myMonitoringInstanceName=$myMonitoringInstancInfo.MachineNameDomainNameInstanceNamePortNumber
+        $myAnswer=$null
+        $myQuery=$null
+        if('' -eq $FilterGroup)
+        {
+          $myQuery = "
+       SELECT  Distinct
+                myGroups.name AS ServerGroupName
+                ,myServer.server_name AS InstanceName
+				,'Data Source='+myServer.server_name+';Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;Integrated Security=True;' AS EncryptConnectionString
+				,'Data Source='+myServer.server_name+';Initial Catalog=master;Integrated Security=True;' AS ConnectionString
+            FROM
+                msdb.dbo.sysmanagement_shared_server_groups_internal As myGroups 
+                INNER JOIN msdb.dbo.sysmanagement_shared_registered_servers_internal As myServer  ON myGroups.server_group_id = myServer.server_group_id
+            WHERE
+                myServer.server_name NOT IN('"+$myMonitoringInstanceName+"','"+$ExeptionList+"')
+            "
+        }
+        else {
+         $myQuery = 
+        "
+            SELECT  Distinct
+                myGroups.name AS ServerGroupName
+                ,myServer.server_name AS InstanceName
+				,'Data Source='+myServer.server_name+';Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;Integrated Security=True;' AS EncryptConnectionString
+				,'Data Source='+myServer.server_name+';Initial Catalog=master;Integrated Security=True;' AS ConnectionString
+            FROM
+                msdb.dbo.sysmanagement_shared_server_groups_internal As myGroups 
+                INNER JOIN msdb.dbo.sysmanagement_shared_registered_servers_internal As myServer  ON myGroups.server_group_id = myServer.server_group_id
+            WHERE
+                myServer.server_name NOT IN('"+$myMonitoringInstanceName+"','"+$ExeptionList+"')
+                AND myGroups.name = '"+$FilterGroup+"'
+          "
+        }
+        try {
+            $myAnswer = Invoke-Sqlcmd -ConnectionString $MonitoringConnectionString -Query $myQuery -OutputSqlErrors $true -OutputAs DataTables
+        }
+        catch {
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+        }
+        return $myAnswer
+    }
+    
+    Function Get-DatabaseInfoFromServer {
+        Param (
+            [parameter(Mandatory = $true)][string]$ConnectionString,
+            [parameter(Mandatory = $false)][string]$ExcludedList
+        )
+        if ($null -ne $ExcludedList){
+        foreach ($myExceptedDB in $ExcludedList){
+            $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
+            }
+        }
+        $myAnswer=$null
+
+        $myQuery = 
+        "
+        SELECT 
+            [myDatabase].[name]
+        FROM 
+            master.sys.databases myDatabase WITH (READPAST)
+            LEFT OUTER JOIN master.sys.dm_hadr_availability_replica_states AS myHA WITH (READPAST) on myDatabase.replica_id=myHa.replica_id
+        WHERE
+            [myDatabase].[name] NOT IN ('master','msdb','model','tempdb'"+$myExludedDB+") 
+            AND [myDatabase].[state] = 0
+            AND [myDatabase].[source_database_id] IS NULL -- REAL DBS ONLY (Not Snapshots)
+            AND [myDatabase].[is_read_only] = 0
+            AND ([myHA].[role]=1 or [myHA].[role] is null)
+        "
+                Write-Host $myQuery
+        try {
+            $myAnswer = Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myQuery -OutputSqlErrors $true -OutputAs DataTables
+        }
+        catch {
+            $myAnswer=$null;
+            Write-Error($_.ToString());
+        }
+        return $myAnswer
+    }
 #endregion
 
 #region Export
-    Export-ModuleMember -Function IsNumeric,Clear-Text,Clear-SqlParameter,Export-DatabaseBlob,Read-SqlQuery,Invoke-SqlCommand,Test-DatabaseConnection,Test-InstanceConnection,Get-InstanceInformation
+    Export-ModuleMember -Function IsNumeric,Clear-Text,Clear-SqlParameter,Export-DatabaseBlob,Read-SqlQuery,Invoke-SqlCommand,Test-DatabaseConnection,Test-InstanceConnection,Get-InstanceInformation ,Get-ServerInfoFromRegistaryServer,Get-DatabaseInfoFromServer
 #endregion

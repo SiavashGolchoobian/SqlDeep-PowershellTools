@@ -247,7 +247,7 @@ Class BackupTest:DatabaseShipping {
         "
         #return ($null -eq $ResultCheckTest)
         try{
-            $myResult = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Database "master" -Query $myCommand -OutputSqlErrors $true -OutputAs DataTables -ErrorAction Stop -EncryptConnection
+            $myResult = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString  -Query $myCommand -OutputSqlErrors $true -OutputAs DataTables -ErrorAction Stop 
             if ($null -eq $myResult) {$myResult=$true}
         }Catch{
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
@@ -280,7 +280,12 @@ Class BackupTest:DatabaseShipping {
         [string]$myCommand=
 
         "
-            DROP DATABASE IF EXISTS [" + $DatabaseName + "]
+        DECLARE @myDatabaseName sysname
+        SET @myDatabaseName = '" + $DatabaseName + "'
+        IF EXISTS (SELECT 1 FROM sys.databases WHERE [name] = @myDatabaseName)
+            BEGIN
+                DROP DATABASE @myDatabaseName
+            END
         "
         try{
             Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Query $myCommand -Database "master" -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
@@ -289,7 +294,7 @@ Class BackupTest:DatabaseShipping {
         }
     }
 
-    [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
+    [void] TestDatabase([string]$SourceConnectionString,[string]$DatabaseName){
         #Set Constr
         [int]$myExecutionId =Get-Random -Minimum 1 -Maximum 1000
         $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
@@ -375,5 +380,8 @@ Class BackupTest:DatabaseShipping {
         }        
 
     }
-#endregion
+    hidden[void] TestDatabases([string[]]$SourceConnectionString){
+        
+
+    }
 }

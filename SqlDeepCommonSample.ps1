@@ -78,3 +78,16 @@ Test-InstanceConnection -ConnectionString $myConnectionString
 [string]$myConnectionString='Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;User=sa;Password=P@ssW0rd'
 $mySqlQueryResult=Get-InstanceInformation -ConnectionString $myConnectionString -ShowRelatedInstanceOnly
 $mySqlQueryResult=Get-InstanceInformation
+
+#Sample 9:  Get Instance Info From Register Server
+[string]$myConnectionString='Data Source=DB-MN-DLV02.SQLDEEP.LOCALNODE,49149;Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;Integrated Security=True;'
+$myExeptionSeverList = "DB-BK-DBV02.SQLDEEP.LOCAL\NODE,49149' ,'DB-DR-DGV01.SQLDEEP.LOCAL\NODE,49149" #'DB-TEST-DTV04.SQLDEEP.LOCAL\NODE,49149'
+$myFilter = "Test"
+$myServerList = GetServerInfoFromRegistaryServer -MonitoringConnectionString $myConnectionString -ExeptionList $myExeptionSeverList -FilterGroup $myFilter 
+
+#Sample 10:  Get database Info 
+$myExeptionDatabaseList ="SSISDB,SqlDeep"
+foreach ($myServerName in $myServerList)
+    {
+    $myDatabaseList = GetDatabaseInfoFromServer -ConnectionString ($myServerName.EncryptConnectionString) -ExcludedList $myExeptionDatabaseList
+    }
