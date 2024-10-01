@@ -459,95 +459,105 @@
         }
         end {}
     }
-    Function Get-ServerInfoFromRegistaryServer {
+    Function Get-InfoFromSqlRegisteredServers {
         Param (
-            [parameter(Mandatory = $true)][string]$MonitoringConnectionString,
-            [parameter(Mandatory = $true)][string]$ExeptionList,
+            [parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)][string]$MonitoringConnectionString,
+            [parameter(Mandatory = $false)][string[]]$ExcludedList,
             [parameter(Mandatory = $false)][string]$FilterGroup
         )
-        $myMonitoringInstancInfo=Get-InstanceInformation -ConnectionString $MonitoringConnectionString -ShowRelatedInstanceOnly
-        $myMonitoringInstanceName=$myMonitoringInstancInfo.MachineNameDomainNameInstanceNamePortNumber
-        $myAnswer=$null
-        $myQuery=$null
-        if('' -eq $FilterGroup)
-        {
-          $myQuery = "
-       SELECT  Distinct
-                myGroups.name AS ServerGroupName
-                ,myServer.server_name AS InstanceName
-				,'Data Source='+myServer.server_name+';Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;Integrated Security=True;' AS EncryptConnectionString
-				,'Data Source='+myServer.server_name+';Initial Catalog=master;Integrated Security=True;' AS ConnectionString
-            FROM
-                msdb.dbo.sysmanagement_shared_server_groups_internal As myGroups 
-                INNER JOIN msdb.dbo.sysmanagement_shared_registered_servers_internal As myServer  ON myGroups.server_group_id = myServer.server_group_id
-            WHERE
-                myServer.server_name NOT IN('"+$myMonitoringInstanceName+"','"+$ExeptionList+"')
-            "
+        begin{
+            [string]$myAnswer=$null
+            [string]$myQuery=$null
+            [string]$myWhereCondition=''
+
+            [string]$myExludedString=''
+            if ($null -ne $ExcludedList){
+                foreach ($myExcludedItem in $ExcludedList){
+                    $myExludedString+=",'" + $myExcludedItem.Trim() + "'"
+                }
+            }
+
+            $myExludedString=Clear-SqlParameter -ParameterValue $myExludedString -RemoveWildcard -RemoveDoubleQuote -RemoveDollerSign -RemoveBraces
+            $FilterGroup=Clear-SqlParameter -ParameterValue $FilterGroup -RemoveWildcard -RemoveDoubleQuote -RemoveDollerSign
+
+            if($null -eq $myExludedString) {$myExludedString=''}
+            if($null -ne $FilterGroup -and  $FilterGroup.Trim() -ne '') {$myWhereCondition="AND myGroups.name = '"+$FilterGroup+"'"}
         }
-        else {
-         $myQuery = 
-        "
-            SELECT  Distinct
-                myGroups.name AS ServerGroupName
-                ,myServer.server_name AS InstanceName
-				,'Data Source='+myServer.server_name+';Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;Integrated Security=True;' AS EncryptConnectionString
-				,'Data Source='+myServer.server_name+';Initial Catalog=master;Integrated Security=True;' AS ConnectionString
-            FROM
-                msdb.dbo.sysmanagement_shared_server_groups_internal As myGroups 
-                INNER JOIN msdb.dbo.sysmanagement_shared_registered_servers_internal As myServer  ON myGroups.server_group_id = myServer.server_group_id
-            WHERE
-                myServer.server_name NOT IN('"+$myMonitoringInstanceName+"','"+$ExeptionList+"')
-                AND myGroups.name = '"+$FilterGroup+"'
-          "
+        process {
+            $myMonitoringInstancInfo=Get-InstanceInformation -ConnectionString $MonitoringConnectionString -ShowRelatedInstanceOnly
+            $myMonitoringInstanceName=$myMonitoringInstancInfo.MachineNameDomainNameInstanceNamePortNumber
+
+            $myQuery = "
+                SELECT Distinct
+                    myGroups.name AS ServerGroupName,
+                    myServer.server_name AS InstanceName,
+                    'Data Source='+myServer.server_name+';Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;Integrated Security=True;' AS EncryptConnectionString,
+                    'Data Source='+myServer.server_name+';Initial Catalog=master;Integrated Security=True;' AS ConnectionString
+                FROM
+                    msdb.dbo.sysmanagement_shared_server_groups_internal As myGroups WITH (READPAST)
+                    INNER JOIN msdb.dbo.sysmanagement_shared_registered_servers_internal As myServer  WITH (READPAST) ON myGroups.server_group_id = myServer.server_group_id
+                WHERE
+                    myServer.server_name NOT IN('"+$myMonitoringInstanceName+"'"+$myExludedString+")
+                    " + $myWhereCondition
+            try {
+                $myAnswer = Invoke-Sqlcmd -ConnectionString $MonitoringConnectionString -Query $myQuery -OutputSqlErrors $true -OutputAs DataTables
+            }
+            catch {
+                $myAnswer=$null;
+                Write-Error($_.ToString());
+            }
+            return $myAnswer
         }
-        try {
-            $myAnswer = Invoke-Sqlcmd -ConnectionString $MonitoringConnectionString -Query $myQuery -OutputSqlErrors $true -OutputAs DataTables
-        }
-        catch {
-            $myAnswer=$null;
-            Write-Error($_.ToString());
-        }
-        return $myAnswer
+        end {}
     }
     
-    Function Get-DatabaseInfoFromServer {
+    Function Get-DatabaseList {
         Param (
-            [parameter(Mandatory = $true)][string]$ConnectionString,
-            [parameter(Mandatory = $false)][string]$ExcludedList
+            [parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)][string]$ConnectionString,
+            [parameter(Mandatory = $false)][string[]]$ExcludedList
         )
-        if ($null -ne $ExcludedList){
-        foreach ($myExceptedDB in $ExcludedList){
-            $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
-            }
-        }
-        $myAnswer=$null
 
-        $myQuery = 
-        "
-        SELECT 
-            [myDatabase].[name]
-        FROM 
-            master.sys.databases myDatabase WITH (READPAST)
-            LEFT OUTER JOIN master.sys.dm_hadr_availability_replica_states AS myHA WITH (READPAST) on myDatabase.replica_id=myHa.replica_id
-        WHERE
-            [myDatabase].[name] NOT IN ('master','msdb','model','tempdb'"+$myExludedDB+") 
-            AND [myDatabase].[state] = 0
-            AND [myDatabase].[source_database_id] IS NULL -- REAL DBS ONLY (Not Snapshots)
-            AND [myDatabase].[is_read_only] = 0
-            AND ([myHA].[role]=1 or [myHA].[role] is null)
-        "
-                Write-Host $myQuery
-        try {
-            $myAnswer = Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myQuery -OutputSqlErrors $true -OutputAs DataTables
+        begin {
+            $myAnswer=$null
+            [string]$myQuery=$null
+            [string]$myExludedDB=''
+
+            if ($null -ne $ExcludedList){
+                foreach ($myExceptedDB in $ExcludedList){
+                    $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
+                }
+            }
+            $myExludedDB=Clear-SqlParameter -ParameterValue $myExludedDB -RemoveWildcard -RemoveDoubleQuote -RemoveDollerSign -RemoveBraces
+
+            $myQuery = 
+            "
+            SELECT 
+                [myDatabase].[name]
+            FROM 
+                master.sys.databases myDatabase WITH (READPAST)
+                LEFT OUTER JOIN master.sys.dm_hadr_availability_replica_states AS myHA WITH (READPAST) on myDatabase.replica_id=myHa.replica_id
+            WHERE
+                [myDatabase].[name] NOT IN ('master','msdb','model','tempdb'"+$myExludedDB+") 
+                AND [myDatabase].[state] = 0
+                AND [myDatabase].[source_database_id] IS NULL -- REAL DBS ONLY (Not Snapshots)
+                AND [myDatabase].[is_read_only] = 0
+                AND ([myHA].[role]=1 or [myHA].[role] is null)
+            "
         }
-        catch {
-            $myAnswer=$null;
-            Write-Error($_.ToString());
+        Process {
+            try {
+                $myAnswer = Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myQuery -OutputSqlErrors $true -OutputAs DataTables
+            }
+            catch {
+                $myAnswer=$null;
+                Write-Error($_.ToString());
+            }
+            return $myAnswer
         }
-        return $myAnswer
+    end{}
     }
 #endregion
 
 #region Export
-    Export-ModuleMember -Function IsNumeric,Clear-Text,Clear-SqlParameter,Export-DatabaseBlob,Read-SqlQuery,Invoke-SqlCommand,Test-DatabaseConnection,Test-InstanceConnection,Get-InstanceInformation ,Get-ServerInfoFromRegistaryServer,Get-DatabaseInfoFromServer
+    Export-ModuleMember -Function IsNumeric,Clear-Text,Clear-SqlParameter,Export-DatabaseBlob,Read-SqlQuery,Invoke-SqlCommand,Test-DatabaseConnection,Test-InstanceConnection,Get-InstanceInformation ,Get-InfoFromSqlRegisteredServers,Get-DatabaseList
 #endregion
