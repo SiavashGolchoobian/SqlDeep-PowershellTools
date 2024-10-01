@@ -247,7 +247,7 @@ Class BackupTest:DatabaseShipping {
         "
         #return ($null -eq $ResultCheckTest)
         try{
-            $myResult = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Database "master" -Query $myCommand -OutputSqlErrors $true -OutputAs DataTables -ErrorAction Stop -EncryptConnection
+            $myResult = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString  -Query $myCommand -OutputSqlErrors $true -OutputAs DataTables -ErrorAction Stop 
             if ($null -eq $myResult) {$myResult=$true}
         }Catch{
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
@@ -278,9 +278,13 @@ Class BackupTest:DatabaseShipping {
     hidden [void] DropDatabase ($DatabaseName){
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         [string]$myCommand=
-
         "
-            DROP DATABASE IF EXISTS [" + $DatabaseName + "]
+        DECLARE @myDatabaseName sysname
+        SET @myDatabaseName = '" + $DatabaseName + "'
+        IF EXISTS (SELECT 1 FROM sys.databases WHERE [name] = @myDatabaseName)
+            BEGIN
+                DROP DATABASE @myDatabaseName
+            END
         "
         try{
             Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Query $myCommand -Database "master" -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
@@ -288,14 +292,30 @@ Class BackupTest:DatabaseShipping {
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         }
     }
+    hidden[void] TestAllDatabases([string[]]$ExcludedDatabaseList){
+        $this.LogWriter.Write('Get Database name from source instance server:',$this.SourceInstanceConnectionString,[LogType]::INF)
+        $myDatabaseList=Get-DatabaseList -ConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedDatabaseList
+        foreach($myDatabase in $myDatabaseList){
+            $this.TestDatabase($myDatabase.name)
+        }
+    }
+    [void] TestFromRegisterServer([string[]]$ExcludedInstanceList,[string[]]$ExcludedDatabaseList){
+        $myServerList = Get-InfoFromSqlRegisteredServers -MonitoringConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedInstanceList  # -FilterGroup $myFilter  # Get Server list from MSX
+        
+        foreach ($myServer in $myServerList){
+            $this.SourceInstanceConnectionString=$myServer.EncryptConnectionString
+            $this.TestDatabases($ExcludedDatabaseList)
+        }
+    }
 
-    [void] Test([string]$SourceConnectionString,[string]$DatabaseName){
+    [void] TestDatabase([string]$DatabaseName){
         #Set Constr
-        [int]$myExecutionId =Get-Random -Minimum 1 -Maximum 1000
+        [int]$myExecutionId=1
+        [string]$myDestinationDatabaseName=$null
+
         $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
-        $SourceConnectionString=Clear-SqlParameter -ParameterValue $SourceConnectionString -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
-      
-        [string]$myDestinationDatabaseName=$DatabaseName+$myExecutionId
+        $myExecutionId=Get-Random -Minimum 1 -Maximum 1000
+        $myDestinationDatabaseName=$DatabaseName+$myExecutionId
         
         #Determine candidate server(s)
         $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name.',[LogType]::INF)
@@ -315,7 +335,6 @@ Class BackupTest:DatabaseShipping {
         ##Determine restoresd server
         $myDestinationInstanceInfo=Get-InstanceInformation -ConnectionString $this.DestinationInstanceConnectionString -ShowRelatedInstanceOnly
         $myDestinationInstanceName=$myDestinationInstanceInfo.InstanceName
- 
         
         #Initial Log Modules
         Write-Verbose ('===== Testbackup database  ' + $DatabaseName + ' as ' + $mySourceInstanceName + ' started. =====')
@@ -347,9 +366,8 @@ Class BackupTest:DatabaseShipping {
                 catch {
                     $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
                     $myTestResult = [TestResult]::RestoreFailed
-                    SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
+                    $this.SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
                 }
-
                 try { #Checkdb 
                     $this.LogWriter.Write($this.LogStaticMessage+('checkdb on database:' + $myDestinationDatabaseName),[LogType]::INF); 
                     $this.TestDatabaseIntegrity($myDestinationDatabaseName)
@@ -363,11 +381,10 @@ Class BackupTest:DatabaseShipping {
                 }
                 try { #Remove database
                     $this.LogWriter.Write($this.LogStaticMessage+('remove database:' + $myDestinationDatabaseName),[LogType]::INF); 
-                    DropDatabase($myDestinationDatabaseName)
+                    $this.DropDatabase($myDestinationDatabaseName)
                 }
                 catch {
                     $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-                    $this.
                 }
             } else {
                 $this.LogWriter.Write($this.LogStaticMessage+('Destination instance is same as Source instance.'),[LogType]::ERR); 
@@ -375,5 +392,29 @@ Class BackupTest:DatabaseShipping {
         }        
 
     }
+ 
 #endregion
 }
+#region Functions
+Function New-DatabaseTest {
+    Param(
+        [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
+        [Parameter(Mandatory=$true)][string]$DestinationInstanceConnectionString,
+        [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY,
+        
+        [Parameter(Mandatory=$true)][LogWriter]$LogWriter
+    )
+    Write-Verbose 'Creating New-DatabaseTest'
+    [string]$mySourceInstanceConnectionString=$SourceInstanceConnectionString
+    [string]$myDestinationInstanceConnectionString=$DestinationInstanceConnectionString
+    [DatabaseRecoveryMode]$myDestinationRestoreMode=$DestinationRestoreMode
+    [LogWriter]$myLogWriter=$LogWriter
+    [BackupTest]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,tbl,$myLogWriter)
+    Write-Verbose 'New-DatabaseTest Created'
+}
+#endregion
+
+#region Export
+Export-ModuleMember -Function New-DatabaseTest
+#endregion   
+    
