@@ -83,11 +83,11 @@ $mySqlQueryResult=Get-InstanceInformation
 [string]$myConnectionString='Data Source=DB-MN-DLV02.SQLDEEP.LOCALNODE,49149;Initial Catalog=master;TrustServerCertificate=True;Encrypt=True;Integrated Security=True;'
 $myExeptionSeverList = "DB-BK-DBV02.SQLDEEP.LOCAL\NODE,49149' ,'DB-DR-DGV01.SQLDEEP.LOCAL\NODE,49149" #'DB-TEST-DTV04.SQLDEEP.LOCAL\NODE,49149'
 $myFilter = "Test"
-$myServerList = GetServerInfoFromRegistaryServer -MonitoringConnectionString $myConnectionString -ExeptionList $myExeptionSeverList -FilterGroup $myFilter 
+$myServerList = Get-ServerInfoFromRegistaryServer -MonitoringConnectionString $myConnectionString -ExeptionList $myExeptionSeverList -FilterGroup $myFilter 
 
 #Sample 10:  Get database Info 
 $myExeptionDatabaseList ="SSISDB,SqlDeep"
 foreach ($myServerName in $myServerList)
     {
-    $myDatabaseList = GetDatabaseInfoFromServer -ConnectionString ($myServerName.EncryptConnectionString) -ExcludedList $myExeptionDatabaseList
+    $myDatabaseList = Get-DatabaseInfoFromServer -ConnectionString ($myServerName.EncryptConnectionString) -ExcludedList $myExeptionDatabaseList
     }

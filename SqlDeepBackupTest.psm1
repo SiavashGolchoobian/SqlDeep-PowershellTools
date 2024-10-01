@@ -278,7 +278,6 @@ Class BackupTest:DatabaseShipping {
     hidden [void] DropDatabase ($DatabaseName){
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         [string]$myCommand=
-
         "
         DECLARE @myDatabaseName sysname
         SET @myDatabaseName = '" + $DatabaseName + "'
@@ -291,6 +290,20 @@ Class BackupTest:DatabaseShipping {
             Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Query $myCommand -Database "master" -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
         }Catch{
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+        }
+    }
+    hidden[void] TestDatabases([string[]]$SourceConnectionString,[string[]]$ExcludedList){
+        $this.LogWriter.Write('Get Database name from source instance server:',$SourceConnectionString,[LogType]::INF)
+        $myDatabaseList=Get-DatabaseInfoFromServer -ConnectionString $this.SourceInstanceConnectionString -ExcludedList $this.ExcludedList
+        foreach($myDatabase in $myDatabaseList){
+            $this.TestDatabase($this.SourceInstanceConnectionString,($myDatabase.name))
+        }
+    }
+    hidden[void] TestFromRegisterServer([string]$SourceConnectionString,[string[]]$ExcludedList){
+        $myServerList = Get-ServerInfoFromRegistaryServer -MonitoringConnectionString $this.SourceConnectionString -ExeptionList $this.DestinationInstanceConnectionString  # -FilterGroup $myFilter  # Get Server list from MSX
+        
+        foreach ($myServer in $myServerList){
+            $this.TestDatabases($myServer.EncryptConnectionString)
         }
     }
 
@@ -372,7 +385,6 @@ Class BackupTest:DatabaseShipping {
                 }
                 catch {
                     $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-                    $this.
                 }
             } else {
                 $this.LogWriter.Write($this.LogStaticMessage+('Destination instance is same as Source instance.'),[LogType]::ERR); 
@@ -380,8 +392,29 @@ Class BackupTest:DatabaseShipping {
         }        
 
     }
-    hidden[void] TestDatabases([string[]]$SourceConnectionString){
-        
-
-    }
+ 
+#endregion
 }
+#region Functions
+Function New-DatabaseTest {
+    Param(
+        [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
+        [Parameter(Mandatory=$true)][string]$DestinationInstanceConnectionString,
+        [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY,
+        
+        [Parameter(Mandatory=$true)][LogWriter]$LogWriter
+    )
+    Write-Verbose 'Creating New-DatabaseTest'
+    [string]$mySourceInstanceConnectionString=$SourceInstanceConnectionString
+    [string]$myDestinationInstanceConnectionString=$DestinationInstanceConnectionString
+    [DatabaseRecoveryMode]$myDestinationRestoreMode=$DestinationRestoreMode
+    [LogWriter]$myLogWriter=$LogWriter
+    [BackupTest]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myDestinationRestoreMode,$myLogWriter)
+    Write-Verbose 'New-DatabaseTest Created'
+}
+#endregion
+
+#region Export
+Export-ModuleMember -Function New-DatabaseTest
+#endregion   
+    
