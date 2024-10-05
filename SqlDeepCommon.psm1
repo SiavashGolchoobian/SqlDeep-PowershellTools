@@ -460,33 +460,33 @@
         end {}
     }
     Function Get-InfoFromSqlRegisteredServers {
+        [OutputType([PSCustomObject[]])]
         Param (
             [parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)][string]$MonitoringConnectionString,
             [parameter(Mandatory = $false)][string[]]$ExcludedList,
             [parameter(Mandatory = $false)][string]$FilterGroup
         )
         begin{
-            [string]$myAnswer=$null
+            [PSCustomObject[]]$myAnswer=$null
             [string]$myQuery=$null
-            [string]$myWhereCondition=''
-
+            [string]$myWhereCondition=''    
             [string]$myExludedString=''
+
             if ($null -ne $ExcludedList){
                 foreach ($myExcludedItem in $ExcludedList){
                     $myExludedString+=",'" + $myExcludedItem.Trim() + "'"
                 }
             }
-
+    
             $myExludedString=Clear-SqlParameter -ParameterValue $myExludedString -RemoveWildcard -RemoveDoubleQuote -RemoveDollerSign -RemoveBraces
             $FilterGroup=Clear-SqlParameter -ParameterValue $FilterGroup -RemoveWildcard -RemoveDoubleQuote -RemoveDollerSign
-
+    
             if($null -eq $myExludedString) {$myExludedString=''}
             if($null -ne $FilterGroup -and  $FilterGroup.Trim() -ne '') {$myWhereCondition="AND myGroups.name = '"+$FilterGroup+"'"}
         }
         process {
             $myMonitoringInstancInfo=Get-InstanceInformation -ConnectionString $MonitoringConnectionString -ShowRelatedInstanceOnly
             $myMonitoringInstanceName=$myMonitoringInstancInfo.MachineNameDomainNameInstanceNamePortNumber
-
             $myQuery = "
                 SELECT Distinct
                     myGroups.name AS ServerGroupName,
@@ -499,36 +499,53 @@
                 WHERE
                     myServer.server_name NOT IN('"+$myMonitoringInstanceName+"'"+$myExludedString+")
                     " + $myWhereCondition
+            
             try {
-                $myAnswer = Invoke-Sqlcmd -ConnectionString $MonitoringConnectionString -Query $myQuery -OutputSqlErrors $true -OutputAs DataTables
+                [System.Collections.ArrayList]$myServerCollection=$null;
+                $myServerCollection=[System.Collections.ArrayList]::new();
+        
+                $myResult= Invoke-Sqlcmd -ConnectionString $MonitoringConnectionString -Query $myQuery -OutputSqlErrors $true
+                $null=$myResult | ForEach-Object{
+                    $myInstanceObject=[PSCustomObject]@{
+                    ServerGroupName=$_.ServerGroupName
+                    InstanceName=$_.InstanceName
+                    EncryptConnectionString=$_.EncryptConnectionString
+                    ConnectionString=$_.ConnectionString}; 
+                    $myServerCollection.Add($myInstanceObject);
+                };
+                $myAnswer=($myServerCollection.ToArray([PSCustomObject]))
             }
-            catch {
+            catch
+            {
                 $myAnswer=$null;
                 Write-Error($_.ToString());
+                throw;
             }
             return $myAnswer
         }
         end {}
     }
     
+
     Function Get-DatabaseList {
+        [OutputType([PSCustomObject[]])]
         Param (
             [parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)][string]$ConnectionString,
             [parameter(Mandatory = $false)][string[]]$ExcludedList
         )
-
+    
         begin {
             $myAnswer=$null
             [string]$myQuery=$null
             [string]$myExludedDB=''
-
+    
             if ($null -ne $ExcludedList){
                 foreach ($myExceptedDB in $ExcludedList){
                     $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
                 }
             }
             $myExludedDB=Clear-SqlParameter -ParameterValue $myExludedDB -RemoveWildcard -RemoveDoubleQuote -RemoveDollerSign -RemoveBraces
-
+    
             $myQuery = 
             "
             SELECT 
@@ -544,17 +561,28 @@
                 AND ([myHA].[role]=1 or [myHA].[role] is null)
             "
         }
-        Process {
+        process {
             try {
-                $myAnswer = Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myQuery -OutputSqlErrors $true -OutputAs DataTables
+                [System.Collections.ArrayList]$myDatabaseCollection=$null;
+                $myDatabaseCollection=[System.Collections.ArrayList]::new();
+        
+                $myResult= Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myQuery -OutputSqlErrors $true
+                $null=$myResult | ForEach-Object{
+                    $myDatabaseObject=[PSCustomObject]@{
+                    DatabaseName=$_.name}; 
+                    $myDatabaseCollection.Add($myDatabaseObject);
+                };
+                $myAnswer=($myDatabaseCollection.ToArray([PSCustomObject]))
             }
-            catch {
+            catch
+            {
                 $myAnswer=$null;
                 Write-Error($_.ToString());
+                throw;
             }
             return $myAnswer
         }
-    end{}
+        end {}
     }
 #endregion
 
