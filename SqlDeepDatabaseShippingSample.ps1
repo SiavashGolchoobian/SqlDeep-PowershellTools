@@ -33,3 +33,8 @@ if ($null -ne $ExcludedList -and $ExcludedList.Trim().Length -gt 0){$myExcludedL
 $myShip.SkipBackupFilesExistenceCheck=$true                #Don't check backup file existence on source (because of performance penalty)
 $myShip.PreferredStrategies=[RestoreStrategy]::Log
 $myShip.ShipAllUserDatabases($Prefix,$myExcludedList)
+
+#Sample7:   Restore signle database [Sampledb1] as [DR_Sampledb] to destination in norecovery mode and change it's Data and Log folder location to another Path
+$myShip.DataFolderRestoreLoation="F:\Data02\Databases\Data"
+$myShip.LogFolderRestoreLoation="F:\Log02\Databases\Data"
+$myShip.ShipDatabase("Sampledb1","Sampledb1_DR")
