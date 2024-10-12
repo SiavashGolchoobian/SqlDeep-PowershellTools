@@ -91,6 +91,7 @@ Class DatabaseShipping {
     [nullable[datetime]]$RestoreTo=$null
     hidden [LogWriter]$LogWriter
     hidden [string]$LogStaticMessage=''
+    hidden [BackupFile[]]$BackupFileList=$null  #This property used to return list of all selected backup files to module consumers
 
     DatabaseShipping(){
 
@@ -1422,6 +1423,7 @@ Class DatabaseShipping {
                 #throw ($this.LogStaticMessage+'There is nothing(no files) to restore.')
             } else {
                 $myRestoreStrategy=[RestoreStrategy]($myBackupFileList[0].StrategyNo)
+                $this.BackupFileList+=$myBackupFileList
             }
             $this.LogWriter.Write($this.LogStaticMessage+('Selected strategy is: ' + $myRestoreStrategy),[LogType]::INF)
 
