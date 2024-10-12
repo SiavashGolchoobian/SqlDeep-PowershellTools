@@ -82,6 +82,8 @@ Class DatabaseShipping {
     [string]$DestinationInstanceConnectionString
     [string]$FileRepositoryUncPath
     [int]$LimitMsdbScanToRecentHours=31*24
+    [string]$DataFolderRestoreLoation="DEFAULT"
+    [string]$LogFolderRestoreLoation="DEFAULT"
     [bool]$RestoreFilesToIndividualFolders=$true
     [DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY
     [RestoreStrategy[]]$PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
@@ -1460,6 +1462,15 @@ Class DatabaseShipping {
             $this.LogWriter.Write($this.LogStaticMessage+('Get destination folder locations of: ' + ($this.DestinationInstanceConnectionString)),[LogType]::INF)
             $myDefaultDestinationDataFolderLocation=$this.Database_GetDefaultDbFolderLocations($this.DestinationInstanceConnectionString,[DatabaseFileType]::DATA)
             $myDefaultDestinationLogFolderLocation=$this.Database_GetDefaultDbFolderLocations($this.DestinationInstanceConnectionString,[DatabaseFileType]::LOG)
+            #Assign user locations if available
+            if ($null -ne $this.DataFolderRestoreLoation -and $this.DataFolderRestoreLoation.Trim().Length -gt 0 -and $this.DataFolderRestoreLoation.ToUpper() -ne "DEFAULT") {
+                $myDefaultDestinationDataFolderLocation=$this.DataFolderRestoreLoation
+            }
+            if ($null -ne $this.LogFolderRestoreLoation -and $this.LogFolderRestoreLoation.Trim().Length -gt 0 -and $this.LogFolderRestoreLoation.ToUpper() -ne "DEFAULT") {
+                $myDefaultDestinationLogFolderLocation=$this.LogFolderRestoreLoation
+            }
+
+            #Check having location path
             If ($null -eq $myDefaultDestinationDataFolderLocation){
                 $this.LogWriter.Write($this.LogStaticMessage+('Default Data folder location is empty on: ' + $this.DestinationInstanceConnectionString),[LogType]::ERR)
                 throw ($this.LogStaticMessage+'Default Data folder location is empty on: ' + $this.DestinationInstanceConnectionString)
@@ -1468,6 +1479,10 @@ Class DatabaseShipping {
                 $this.LogWriter.Write($this.LogStaticMessage+('Default Log folder location is empty on: ' + $this.DestinationInstanceConnectionString),[LogType]::ERR)
                 throw ($this.LogStaticMessage+'Default Log folder location is empty on: ' + $this.DestinationInstanceConnectionString)
             }
+
+            #Make sure location paths ending with \ character
+            $myDefaultDestinationDataFolderLocation=$this.Path_CorrectFolderPathFormat($myDefaultDestinationDataFolderLocation)+'\'
+            $myDefaultDestinationLogFolderLocation=$this.Path_CorrectFolderPathFormat($myDefaultDestinationLogFolderLocation)+'\'
 
             $this.LogWriter.Write($this.LogStaticMessage+'Calculate RestoreLocation Folder',[LogType]::INF)
             if ($this.RestoreFilesToIndividualFolders) {
