@@ -15,13 +15,12 @@ Class BackupTestCatalogItem {
     [int]$TestResult
     [datetime]$BackupRestoredTime
     [datetime]$BackupStartTime
-    [string]$LogFilePath
     [datetime]$SysRowVersion
     [string]$TestResultDescription
     [bigint]$HashValue
     [datetime]$FinishTime
    
-    BackupTestCatalogItem([bigint]$Id,[string]$InstanceName,[string]$DatabaseName,[int]$TestResult,[datetime]$BackupRestoredTime,[datetime]$BackupStartTime,[string]$LogFilePath,[datetime]$SysRowVersion,[string]$TestResultDescription,[bigint]$HashValue,[datetime]$FinishTime){
+    BackupTestCatalogItem([bigint]$Id,[string]$InstanceName,[string]$DatabaseName,[int]$TestResult,[datetime]$BackupRestoredTime,[datetime]$BackupStartTime,[datetime]$SysRowVersion,[string]$TestResultDescription,[bigint]$HashValue,[datetime]$FinishTime){
         Write-Verbose 'BackupCatalogItem object initializing started'
         $this.Id=$Id
         $this.InstanceName=$InstanceName
@@ -29,7 +28,6 @@ Class BackupTestCatalogItem {
         $this.TestResult=$TestResult
         $this.BackupRestoredTime=$BackupRestoredTime
         $this.BackupStartTime=$BackupStartTime
-        $this.LogFilePath=$LogFilePath
         $this.SysRowVersion=$SysRowVersion
         $this.TestResultDescription=$TestResultDescription
         $this.HashValue=$HashValue
@@ -37,7 +35,6 @@ Class BackupTestCatalogItem {
         Write-Verbose 'BackupCatalogItem object initialized'
     }
 }
-<
 Class BackupTest:DatabaseShipping {
     [string]$BackupTestCatalogTableName;
     [nullable[datetime]]$StartDate ;
@@ -110,7 +107,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
             [TestResult] [INT] NOT NULL,
             [BackupRestoredTime] [DATETIME] NOT NULL,
             [BackupStartTime] [DATETIME] NULL,
-            [LogFilePath] [NVARCHAR](255) NULL,
             [SysRowVersion] [TIMESTAMP] NOT NULL,
             [TestResultDescription] [NCHAR](50) NULL,
             [HashValue]  AS (BINARY_CHECKSUM([InstanceName],[DatabaseName])),
@@ -175,10 +171,11 @@ hidden Init ([string]$BackupTestCatalogTableName)
         [bool]$myResult = $false
         $myCommand = "
         DECLARE @myDBName AS NVARCHAR(100)
-        SET @myDBName = CAST('"+$DestinationDatabaseName +"') AS NVARCHAR(100));
+        SET @myDBName = CAST('"+$DestinationDatabaseName+"' AS NVARCHAR(100));
         
         DBCC CHECKDB (@myDBName) WITH NO_INFOMSGS;
         "
+        Write-Host $myCommand
         #return ($null -eq $ResultCheckTest)
         try{
             $myResult = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString  -Query $myCommand -OutputSqlErrors $true -OutputAs DataTables -ErrorAction Stop 
@@ -189,31 +186,31 @@ hidden Init ([string]$BackupTestCatalogTableName)
         }
     return $myResult
     }
-    hidden [void] SaveResultToBackupTestCatalog([string]$DatabaseName,[TestResult]$TestResult) {
+    hidden [void] SaveResultToBackupTestCatalog([string]$DatabaseName,[TestResult]$TestResult, [DATETIME]$RecoveryDateTime) {
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-        $mySourceInstanceInstanceInfo=Get-InstanceInformation -ConnectionString $this.DestinationInstanceConnectionString -ShowRelatedInstanceOnly
-        $mySourceInstanceName=$mySourceInstanceInstanceInfo.InstanceName
-        Write-Host $TestResult
-        $myCommand = $null
+
+        $mySourceInstanceInstanceInfo=Get-InstanceInformation -ConnectionString $this.SourceInstanceConnectionString -ShowRelatedInstanceOnly
+        $mySourceInstanceName=$mySourceInstanceInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
         $myCommand = "
         DECLARE @myRecoveryDateTime AS DateTime
         DECLARE @myBackupStartTime AS DateTime
-        SET @myBackupStartTime = CAST('"+$this.BackupStartTime.ToString()+"' AS DATETIME)
-        SET @myRecoveryDateTime = CAST('"+$this.RestoreTo.ToString()+"' AS DATETIME)
-        INSERT INTO [dbo].[BackupTestResult] ([InstanceName], [DatabaseName], [TestResult], [TestResultDescription], [BackupRestoredTime], [BackupStartTime], [LogFilePath])
-        VALUES (N'"+ $mySourceInstanceName +"', N'"+ $DatabaseName +"', "+($TestResult.value__)+","+ $TestResult+", @myRecoveryDateTime, @myBackupStartTime, N'$($this.ErrorFileAddress)')
+        SET @myRecoveryDateTime = CAST('" + ($RecoveryDateTime.ToString()) + "' AS DATETIME)
+
+   
+        INSERT INTO[dbo].["+$this.BackupTestCatalogTableName+"] ([InstanceName], [DatabaseName], [TestResult], [TestResultDescription], [BackupRestoredTime])
+        VALUES (N'"+ $mySourceInstanceName +"', N'"+ $DatabaseName +"', "+($TestResult.value__).ToString() +", N'"+ $TestResult +"', @myRecoveryDateTime)
         "
         Write-Host $myCommand
 
        # Invoke-Sqlcmd -ServerInstance $this.RestoreInstance -Database $this.DatabaseReportStore -Query $myInsertCommand -OutputSqlErrors $true -QueryTimeout 0 -EncryptConnection
         try{
             Write-Verbose $myCommand
-            Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
+            Invoke-Sqlcmd -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
         }Catch{
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         }
     }
-    hidden [void] DropDatabase ($DatabaseName){
+    hidden [void] DropDatabase ([string]$DatabaseName){
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         [string]$myCommand=
         "
@@ -221,17 +218,17 @@ hidden Init ([string]$BackupTestCatalogTableName)
         SET @myDatabaseName = '" + $DatabaseName + "'
         IF EXISTS (SELECT 1 FROM sys.databases WHERE [name] = @myDatabaseName)
             BEGIN
-                DROP DATABASE @myDatabaseName
+                DROP DATABASE " + $DatabaseName + "
             END
         "
         try{
-            Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query $myCommand -Database "master" -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+            Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
         }Catch{
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         }
     }
     [void] TestAllDatabases([string[]]$ExcludedDatabaseList){
-        $this.LogWriter.Write('Get Database name from source instance server:',$this.SourceInstanceConnectionString,[LogType]::INF)
+        $this.LogWriter.Write('Get Database name from source instance server:',($this.SourceInstanceConnectionString).ToString(),[LogType]::INF)
         $myDatabaseList=Get-DatabaseList -ConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedDatabaseList
         foreach($myDatabase in $myDatabaseList){
             $this.TestDatabase($myDatabase.DatabaseName)
@@ -285,7 +282,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
         $this.LogWriter.Write($this.LogStaticMessage+('TestDatabase ' + $DatabaseName + ' as ' + $mySourceInstanceName), [LogType]::INF) 
         $this.LogWriter.Write($this.LogStaticMessage+'Initializing EventsTable.Create.', [LogType]::INF) 
        # $this.RestoreTo=Clear-SqlParameter -ParameterValue $this.RestoreTo -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
-       Write-Host "Step1"  $this.RestoreTo
         if($null -eq $this.RestoreTo)
         {
             Write-Host $this.RestoreTo
@@ -317,26 +313,24 @@ hidden Init ([string]$BackupTestCatalogTableName)
                     $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
                     $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
                     $myTestResult = [TestResult]::RestoreSuccseed
-                    $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult)
-                    Write-Host "step 2"
+                    $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime))
+
                 }
                 catch {
                     $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
                     $myTestResult = [TestResult]::RestoreFailed
-                    Write-Host "step 3"
-                    write-host $DatabaseName + $myTestResult
-                    $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult)
+                    $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime))
                 }
                 try { #Checkdb 
                     $this.LogWriter.Write($this.LogStaticMessage+('checkdb on database:' + $myDestinationDatabaseName),[LogType]::INF); 
                     $this.TestDatabaseIntegrity($myDestinationDatabaseName)
                     $myTestResult = [TestResult]::CheckDbSuccseed
-                    $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult)
+                    $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime))
                 }
                 catch {
                     $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
                     $myTestResult = [TestResult]::CheckDbFailed
-                    $this.SaveResultToBackupTestCatalog($DatabaseName,$mySourceInstanceName,$myTestResult)
+                    $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime))
                 }
                 try { #Remove database
                     $this.LogWriter.Write($this.LogStaticMessage+('remove database:' + $myDestinationDatabaseName),[LogType]::INF); 
