@@ -15,12 +15,13 @@ Class BackupTestCatalogItem {
     [int]$TestResult
     [datetime]$BackupRestoredTime
     [datetime]$BackupStartTime
+    [string]$LogFilePath
     [datetime]$SysRowVersion
     [string]$TestResultDescription
     [bigint]$HashValue
     [datetime]$FinishTime
    
-    BackupTestCatalogItem([bigint]$Id,[string]$InstanceName,[string]$DatabaseName,[int]$TestResult,[datetime]$BackupRestoredTime,[datetime]$BackupStartTime,[datetime]$SysRowVersion,[string]$TestResultDescription,[bigint]$HashValue,[datetime]$FinishTime){
+    BackupTestCatalogItem([bigint]$Id,[string]$InstanceName,[string]$DatabaseName,[int]$TestResult,[datetime]$BackupRestoredTime,[datetime]$BackupStartTime,[string]$LogFilePath,[datetime]$SysRowVersion,[string]$TestResultDescription,[bigint]$HashValue,[datetime]$FinishTime){
         Write-Verbose 'BackupCatalogItem object initializing started'
         $this.Id=$Id
         $this.InstanceName=$InstanceName
@@ -28,6 +29,7 @@ Class BackupTestCatalogItem {
         $this.TestResult=$TestResult
         $this.BackupRestoredTime=$BackupRestoredTime
         $this.BackupStartTime=$BackupStartTime
+        $this.LogFilePath=$LogFilePath
         $this.SysRowVersion=$SysRowVersion
         $this.TestResultDescription=$TestResultDescription
         $this.HashValue=$HashValue
@@ -107,6 +109,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
             [TestResult] [INT] NOT NULL,
             [BackupRestoredTime] [DATETIME] NOT NULL,
             [BackupStartTime] [DATETIME] NULL,
+            [LogFilePath] [NVARCHAR](255) NULL,
             [SysRowVersion] [TIMESTAMP] NOT NULL,
             [TestResultDescription] [NCHAR](50) NULL,
             [HashValue]  AS (BINARY_CHECKSUM([InstanceName],[DatabaseName])),
@@ -186,11 +189,13 @@ hidden Init ([string]$BackupTestCatalogTableName)
         }
     return $myResult
     }
-    hidden [void] SaveResultToBackupTestCatalog([string]$DatabaseName,[TestResult]$TestResult, [DATETIME]$RecoveryDateTime) {
+    hidden [void] SaveResultToBackupTestCatalog([string]$DatabaseName,[TestResult]$TestResult, [datetime]$RecoveryDateTime) {
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
 
         $mySourceInstanceInstanceInfo=Get-InstanceInformation -ConnectionString $this.SourceInstanceConnectionString -ShowRelatedInstanceOnly
         $mySourceInstanceName=$mySourceInstanceInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
+        Write-Host $RecoveryDateTime.DateTime
+        Write-Host  ($RecoveryDateTime.ToString())
         $myCommand = "
         DECLARE @myRecoveryDateTime AS DateTime
         DECLARE @myBackupStartTime AS DateTime
@@ -228,18 +233,18 @@ hidden Init ([string]$BackupTestCatalogTableName)
         }
     }
     [void] TestAllDatabases([string[]]$ExcludedDatabaseList){
-        $this.LogWriter.Write('Get Database name from source instance server:',($this.SourceInstanceConnectionString).ToString(),[LogType]::INF)
+       # $this.LogWriter.Write('Get Database name from source instance server:',($this.SourceInstanceConnectionString).ToString(),[LogType]::INF)
         $myDatabaseList=Get-DatabaseList -ConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedDatabaseList
         foreach($myDatabase in $myDatabaseList){
             $this.TestDatabase($myDatabase.DatabaseName)
         }
     }
     [void] TestFromRegisterServer([string[]]$ExcludedInstanceList,[string[]]$ExcludedDatabaseList){
-        $myServerList = Get-InfoFromSqlRegisteredServers -MonitoringConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedInstanceList  # -FilterGroup $myFilter  # Get Server list from MSX
+        $myServerList = Get-InfoFromSqlRegisteredServers -MonitoringConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedInstanceList -FilterGroup "SQL 2019" # Get Server list from MSX
         
         foreach ($myServer in $myServerList){
             $this.SourceInstanceConnectionString=$myServer.EncryptConnectionString
-            $this.TestDatabases($ExcludedDatabaseList)
+            $this.TestAllDatabases($ExcludedDatabaseList)
         }
     }
     [void] TestDatabase([string]$DatabaseName){
