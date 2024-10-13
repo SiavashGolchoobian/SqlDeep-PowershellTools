@@ -459,7 +459,7 @@
         }
         end {}
     }
-    unction Get-InfoFromSqlRegisteredServers {
+    function Get-InfoFromSqlRegisteredServers {
         [OutputType([PSCustomObject[]])]
         Param (
             [parameter(Mandatory = $true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)][string]$MonitoringConnectionString,
