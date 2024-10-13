@@ -82,6 +82,8 @@ Class DatabaseShipping {
     [string]$DestinationInstanceConnectionString
     [string]$FileRepositoryUncPath
     [int]$LimitMsdbScanToRecentHours=31*24
+    [string]$DataFolderRestoreLoation='DEFAULT'
+    [string]$LogFolderRestoreLoation='DEFAULT'
     [bool]$RestoreFilesToIndividualFolders=$true
     [DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY
     [RestoreStrategy[]]$PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
@@ -89,6 +91,7 @@ Class DatabaseShipping {
     [nullable[datetime]]$RestoreTo=$null
     hidden [LogWriter]$LogWriter
     hidden [string]$LogStaticMessage=''
+    hidden [BackupFile[]]$BackupFileList=$null  #This property used to return list of all selected backup files to module consumers, This property should not be used for producation usage inside this module because it's writeable for outsiders
 
     DatabaseShipping(){
 
@@ -1355,6 +1358,7 @@ Class DatabaseShipping {
             [string]$myCurrentMachineName=([Environment]::MachineName).ToUpper()
             [string]$mySourceBackupMachineName=$null
             [string]$mySourceBackupFilePath=$null
+            $myMediaSetHashTable=@{}
             $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($this.FileRepositoryUncPath)
 
             #--=======================Validate input parameters
@@ -1419,6 +1423,7 @@ Class DatabaseShipping {
                 #throw ($this.LogStaticMessage+'There is nothing(no files) to restore.')
             } else {
                 $myRestoreStrategy=[RestoreStrategy]($myBackupFileList[0].StrategyNo)
+                $this.BackupFileList+=$myBackupFileList     #Populate all usable backup file list for all shipped databases for module cunsumer users, This property should not be used for producation usage inside this module because it's writeable for outsiders
             }
             $this.LogWriter.Write($this.LogStaticMessage+('Selected strategy is: ' + $myRestoreStrategy),[LogType]::INF)
 
@@ -1432,13 +1437,16 @@ Class DatabaseShipping {
             $myCurrentMachineName=([Environment]::MachineName).ToUpper()
             $mySourceBackupMachineName = $this.Database_GetServerName($this.SourceInstanceConnectionString).ToUpper()
             foreach ($myBackupFile in $myBackupFileList){
-                if ($myCurrentMachineName -eq $mySourceBackupMachineName) {     #Decide to use local path of source server backup file(s) or UNC path of backup file(s)
-                    $mySourceBackupFilePath=$myBackupFile.FilePath
-                } else {
-                    $mySourceBackupFilePath=$myBackupFile.RemoteSourceFilePath
+                $myMediaSetHashTable[$myBackupFile.FilePath]+=1  #Count number of files transferred for each mediasetid (this variable is useful for preventing multiple backup file copy)
+                if ($myMediaSetHashTable[$myBackupFile.FilePath] -eq 1) { #Copy only untransfeered file (in case of one backup file for multiple backupsets)
+                    if ($myCurrentMachineName -eq $mySourceBackupMachineName) {     #Decide to use local path of source server backup file(s) or UNC path of backup file(s)
+                        $mySourceBackupFilePath=$myBackupFile.FilePath
+                    } else {
+                        $mySourceBackupFilePath=$myBackupFile.RemoteSourceFilePath
+                    }
+                    Copy-Item -Path $mySourceBackupFilePath -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop
+                    $this.LogWriter.Write($this.LogStaticMessage+('Copy backup file from ' + $mySourceBackupFilePath + ' to ' + ($this.FileRepositoryUncPath)),[LogType]::INF)
                 }
-                Copy-Item -Path $mySourceBackupFilePath -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop
-                $this.LogWriter.Write($this.LogStaticMessage+('Copy backup file from ' + $mySourceBackupFilePath + ' to ' + ($this.FileRepositoryUncPath)),[LogType]::INF)
             }
 
             #--=======================Drop not in restoring mode databases
@@ -1456,6 +1464,15 @@ Class DatabaseShipping {
             $this.LogWriter.Write($this.LogStaticMessage+('Get destination folder locations of: ' + ($this.DestinationInstanceConnectionString)),[LogType]::INF)
             $myDefaultDestinationDataFolderLocation=$this.Database_GetDefaultDbFolderLocations($this.DestinationInstanceConnectionString,[DatabaseFileType]::DATA)
             $myDefaultDestinationLogFolderLocation=$this.Database_GetDefaultDbFolderLocations($this.DestinationInstanceConnectionString,[DatabaseFileType]::LOG)
+            #Assign user locations if available
+            if ($null -ne $this.DataFolderRestoreLoation -and $this.DataFolderRestoreLoation.Trim().Length -gt 0 -and $this.DataFolderRestoreLoation.ToUpper() -ne 'DEFAULT') {
+                $myDefaultDestinationDataFolderLocation=$this.DataFolderRestoreLoation
+            }
+            if ($null -ne $this.LogFolderRestoreLoation -and $this.LogFolderRestoreLoation.Trim().Length -gt 0 -and $this.LogFolderRestoreLoation.ToUpper() -ne 'DEFAULT') {
+                $myDefaultDestinationLogFolderLocation=$this.LogFolderRestoreLoation
+            }
+
+            #Check having location path
             If ($null -eq $myDefaultDestinationDataFolderLocation){
                 $this.LogWriter.Write($this.LogStaticMessage+('Default Data folder location is empty on: ' + $this.DestinationInstanceConnectionString),[LogType]::ERR)
                 throw ($this.LogStaticMessage+'Default Data folder location is empty on: ' + $this.DestinationInstanceConnectionString)
@@ -1464,6 +1481,10 @@ Class DatabaseShipping {
                 $this.LogWriter.Write($this.LogStaticMessage+('Default Log folder location is empty on: ' + $this.DestinationInstanceConnectionString),[LogType]::ERR)
                 throw ($this.LogStaticMessage+'Default Log folder location is empty on: ' + $this.DestinationInstanceConnectionString)
             }
+
+            #Make sure location paths ending with \ character
+            $myDefaultDestinationDataFolderLocation=$this.Path_CorrectFolderPathFormat($myDefaultDestinationDataFolderLocation)+'\'
+            $myDefaultDestinationLogFolderLocation=$this.Path_CorrectFolderPathFormat($myDefaultDestinationLogFolderLocation)+'\'
 
             $this.LogWriter.Write($this.LogStaticMessage+'Calculate RestoreLocation Folder',[LogType]::INF)
             if ($this.RestoreFilesToIndividualFolders) {
