@@ -7,7 +7,7 @@
 .AUTHOR  
     Fatemeh Moniri 
 .DATE  
-    2023-10-03  
+    2024-09-20  
 #>  
 function RestoreAllDatabasesFromRepository {
     param (
@@ -79,7 +79,6 @@ function RestoreAllDatabasesFromRepository {
         }
     }
 }
-
 # Example usage
 
 
