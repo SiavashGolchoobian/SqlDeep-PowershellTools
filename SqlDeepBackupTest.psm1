@@ -55,7 +55,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
    #$myShip=New-DatabaseShipping -SourceInstanceConnectionString "Data Source=LSNR.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-DR-DGV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -FileRepositoryUncPath "\\db-dr-dgv01\Backups" -DestinationRestoreMode ([DatabaseRecoveryMode]::RESTOREONLY) -LogWrite $myLogWriter -LimitMsdbScanToRecentHours 24 -RestoreFilesToIndividualFolders
 
 #region Functions
-    hidden[datetime] GenerateRandomDate([nullable[DateTime]]$StartDate, [nullable[DateTime]]$EndDate) {
+    hidden [datetime] GenerateRandomDate([nullable[DateTime]]$StartDate, [nullable[DateTime]]$EndDate) {
         [nullable[DateTime]]$myStartDate = $StartDate
         [nullable[DateTime]]$myEndDate = $EndDate
         
@@ -80,7 +80,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
             $myEndDate=$StartDate
         }  
         $myRandomDate = Get-Random -Minimum $myStartDate.Ticks -Maximum $myEndDate.Ticks
-     return $myRandomDate =[datetime]::FromFileTime($myRandomDate)
+     return $myRandomDate =[datetime]($myRandomDate)
     }
     hidden [bool] CreateBackupTestCatalog() {   #Create Log Table to Write Logs of transfered files in a table, if not exists
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
@@ -178,8 +178,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
         
         DBCC CHECKDB (@myDBName) WITH NO_INFOMSGS;
         "
-        Write-Host $myCommand
-        #return ($null -eq $ResultCheckTest)
         try{
             $myResult = Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString  -Query $myCommand -OutputSqlErrors $true -OutputAs DataTables -ErrorAction Stop 
             if ($null -eq $myResult) {$myResult=$true}
@@ -194,8 +192,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
 
         $mySourceInstanceInstanceInfo=Get-InstanceInformation -ConnectionString $this.SourceInstanceConnectionString -ShowRelatedInstanceOnly
         $mySourceInstanceName=$mySourceInstanceInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
-        Write-Host $RecoveryDateTime.DateTime
-        Write-Host  ($RecoveryDateTime.ToString())
         $myCommand = "
         DECLARE @myRecoveryDateTime AS DateTime
         DECLARE @myBackupStartTime AS DateTime

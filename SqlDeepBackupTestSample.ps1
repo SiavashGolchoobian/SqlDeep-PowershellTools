@@ -9,7 +9,8 @@ $myBackupTest.LogWriter=$myLogWriter
 
 #Sample 1:
 [BackupTest]$myDatabaseTest=$null
-$myDatabaseTest=New-DatabaseTest -SourceInstanceConnectionString "Data Source=DB-C1-DLV16.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-BK-DBV02.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogWrite $myLogWriter -BackupTestCatalogTableName "myTestTable"
+#$myDatabaseTest=New-DatabaseTest -SourceInstanceConnectionString "Data Source=DB-C1-DLV16.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-BK-DBV02.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogWrite $myLogWriter -BackupTestCatalogTableName "myTestTable" # -FileRepositoryUncPath "\\DB-BK-DBV02\U$\Databases\Backup"
+$myDatabaseTest=New-DatabaseTest -SourceInstanceConnectionString "Data Source=DB-C1-DLV16.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-BK-DBV02.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogWrite $myLogWriter -BackupTestCatalogTableName "myTestTable" # -FileRepositoryUncPath "\\DB-BK-DBV02\U$\Databases\Backup"
 
 $myDatabaseTest.StartDate=(Get-Date).AddDays(-2) 
 $myDatabaseTest.EndDate=Get-Date
