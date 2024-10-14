@@ -366,18 +366,6 @@ Class BackupShipping {
         }
     }
 #region Functions
-hidden [string]Path_CorrectFolderPathFormat ([string]$FolderPath) {    #Correcting folder path format
-    if ($this.LogWriter) {
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-    } else {
-        Write-Verbose 'Processing Started.'
-    }
-    [string]$myAnswer=$null
-    $FolderPath=$FolderPath.Trim()
-    if ($FolderPath.ToCharArray()[-1] -eq '\') {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length-1)}    
-    $myAnswer=$FolderPath
-    return $myAnswer
-}
 hidden [bool]Create_ShippedBackupsCatalog() {   #Create Log Table to Write Logs of transfered files in a table, if not exists
     $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
     [bool]$myAnswer=[bool]$true
@@ -1879,7 +1867,7 @@ hidden [void] Delete_DepricatedBackup([bool]$CleanupAllServers){  #Transfer Back
                         $myResult=$this.Operate_OverScp([HostOperation]::DELETE,$myBackupCatalogItem.Destination,$this.DestinationCredential,$myFile,$null,$this.SshHostKeyFingerprint)
                     }
                 UNC {
-                        $myFile = $this.Path_CorrectFolderPathFormat($myFolder) + '\' + $myBackupCatalogItem.FileName
+                        $myFile = (Clear-FolderPath -FolderPath $myFolder) + '\' + $myBackupCatalogItem.FileName
                         $this.LogWriter.Write($this.LogStaticMessage+'Start to delete ' + $myFile, [LogType]::INF) 
                         $myResult=$true
                         $myResult=$this.Operate_OverUnc([HostOperation]::DELETE,$myBackupCatalogItem.Destination,$this.DestinationCredential,'A',$myFile,$null)
