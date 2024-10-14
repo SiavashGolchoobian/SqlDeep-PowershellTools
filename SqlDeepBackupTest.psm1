@@ -50,6 +50,7 @@ BackupTest([string]$BackupTestCatalogTableName) : base() {
 }
 hidden Init ([string]$BackupTestCatalogTableName)
 {  
+    $this.LimitMsdbScanToRecentHours=24;
     if($null -eq $this.BackupTestCatalogTableName -or $this.BackupTestCatalogTableName.Trim().Length -eq 0){$this.BackupTestCatalogTableName='BackupTest'}
 }
    #$myShip=New-DatabaseShipping -SourceInstanceConnectionString "Data Source=LSNR.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-DR-DGV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -FileRepositoryUncPath "\\db-dr-dgv01\Backups" -DestinationRestoreMode ([DatabaseRecoveryMode]::RESTOREONLY) -LogWrite $myLogWriter -LimitMsdbScanToRecentHours 24 -RestoreFilesToIndividualFolders
@@ -229,14 +230,15 @@ hidden Init ([string]$BackupTestCatalogTableName)
         }
     }
     [void] TestAllDatabases([string[]]$ExcludedDatabaseList){
-       # $this.LogWriter.Write('Get Database name from source instance server:',($this.SourceInstanceConnectionString).ToString(),[LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         $myDatabaseList=Get-DatabaseList -ConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedDatabaseList
         foreach($myDatabase in $myDatabaseList){
             $this.TestDatabase($myDatabase.DatabaseName)
         }
     }
-    [void] TestFromRegisterServer([string[]]$ExcludedInstanceList,[string[]]$ExcludedDatabaseList){
-        $myServerList = Get-InfoFromSqlRegisteredServers -MonitoringConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedInstanceList -FilterGroup "SQL 2019" # Get Server list from MSX
+    [void] TestFromRegisterServer([string[]]$ExcludedInstanceList,[string[]]$ExcludedDatabaseList,[string]$RegisteryCategoryName){
+        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $myServerList = Get-InfoFromSqlRegisteredServers -MonitoringConnectionString $this.SourceInstanceConnectionString -ExcludedList $ExcludedInstanceList -FilterGroup $RegisteryCategoryName # Get Server list from MSX
         
         foreach ($myServer in $myServerList){
             $this.SourceInstanceConnectionString=$myServer.EncryptConnectionString
@@ -244,6 +246,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
         }
     }
     [void] TestDatabase([string]$DatabaseName){
+        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         #Set Constr
         [int]$myExecutionId=1
         [string]$myDestinationDatabaseName=$null
@@ -276,7 +279,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
 
         #Initial Log Modules
         Write-Verbose ('===== Testbackup database  ' + $DatabaseName + ' as ' + $mySourceInstanceName + ' started. =====')
-        $this.LogStaticMessage= "{""SourceDB"":""" + $DatabaseName + ' as ' + """,""SourceInstance"":""" + $mySourceInstanceName+"""} : "
+        $this.LogStaticMessage= '{"SourceDB":"' + $DatabaseName + ' as ' + '","SourceInstance":"' + $mySourceInstanceName+'"} : '
        # $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$myDestinationDatabaseName)
         $this.LogWriter.Reinitialize()
         $this.LogWriter.Write($this.LogStaticMessage+'===== BackupTest process started... ===== ', [LogType]::INF) 
@@ -309,8 +312,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
                 try { #Restore database to destination
                     $this.LogWriter.Write($this.LogStaticMessage+('restored database with name:' + $myDestinationDatabaseName),[LogType]::INF);
                     $this.DestinationRestoreMode=[DatabaseRecoveryMode]::RECOVERY
-                    $this.FileRepositoryUncPath ="\\DB-BK-DBV02\U$\Databases\Backup"
-                    $this.LimitMsdbScanToRecentHours = 24
                     $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
                     $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
                     $myTestResult = [TestResult]::RestoreSuccseed
@@ -355,6 +356,7 @@ Function New-DatabaseTest {
         [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$DestinationInstanceConnectionString,
         [Parameter(Mandatory=$false)][string]$BackupTestCatalogTableName,
+        [Parameter(Mandatory=$true)][string]$FileRepositoryUncPath,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
     Write-Verbose 'Creating New-DatabaseTest'
@@ -366,6 +368,7 @@ Function New-DatabaseTest {
     $myAnswer=[BackupTest]::New($myBackupTestCatalogTableName)
     $myAnswer.SourceInstanceConnectionString=$mySourceInstanceConnectionString
     $myAnswer.DestinationInstanceConnectionString=$myDestinationInstanceConnectionString
+    $myAnswer.FileRepositoryUncPath = $FileRepositoryUncPath
     $myAnswer.LogWriter=$myLogWriter
     Write-Verbose 'New-DatabaseTest Created'
     Return $myAnswer
