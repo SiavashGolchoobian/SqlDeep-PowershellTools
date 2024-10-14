@@ -1,3 +1,4 @@
+Using module .\SqlDeepCommon.psm1
 Using module .\SqlDeepLogWriter.psm1
 
 enum DatabaseRecoveryMode {
@@ -112,22 +113,10 @@ Class DatabaseShipping {
         $this.LogWriter=$LogWriter
     }
 #region Functions
-    hidden [string]Path_CorrectFolderPathFormat ([string]$FolderPath) {    #Correcting folder path format
-        if ($this.LogWriter) {
-            $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-        } else {
-            Write-Verbose 'Processing Started.'
-        }
-        [string]$myAnswer=$null
-        $FolderPath=$FolderPath.Trim()
-        if ($FolderPath.ToCharArray()[-1] -eq '\') {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length)}    
-        $myAnswer=$FolderPath
-        return $myAnswer
-    }
     hidden [bool]Path_IsWritable ([string]$FolderPath) {    #Check writable path
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF) 
         [bool]$myAnswer=$false
-        $FolderPath=$this.Path_CorrectFolderPathFormat($FolderPath)
+        $FolderPath=Clear-FolderPath -FolderPath $FolderPath
         if ((Test-Path -Path $FolderPath -PathType Container) -eq $true) {
             $myFilename=((New-Guid).ToString())+'.lck'
             try {
@@ -1359,7 +1348,7 @@ Class DatabaseShipping {
             [string]$mySourceBackupMachineName=$null
             [string]$mySourceBackupFilePath=$null
             $myMediaSetHashTable=@{}
-            $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($this.FileRepositoryUncPath)
+            $this.FileRepositoryUncPath=Clear-FolderPath -FolderPath ($this.FileRepositoryUncPath)
 
             #--=======================Validate input parameters
             if ($SourceDB.Trim().Length -eq 0) {
@@ -1483,8 +1472,8 @@ Class DatabaseShipping {
             }
 
             #Make sure location paths ending with \ character
-            $myDefaultDestinationDataFolderLocation=$this.Path_CorrectFolderPathFormat($myDefaultDestinationDataFolderLocation)+'\'
-            $myDefaultDestinationLogFolderLocation=$this.Path_CorrectFolderPathFormat($myDefaultDestinationLogFolderLocation)+'\'
+            $myDefaultDestinationDataFolderLocation=(Clear-FolderPath -FolderPath $myDefaultDestinationDataFolderLocation)+'\'
+            $myDefaultDestinationLogFolderLocation=(Clear-FolderPath -FolderPath $myDefaultDestinationLogFolderLocation)+'\'
 
             $this.LogWriter.Write($this.LogStaticMessage+'Calculate RestoreLocation Folder',[LogType]::INF)
             if ($this.RestoreFilesToIndividualFolders) {
@@ -1526,7 +1515,7 @@ Class DatabaseShipping {
                                                         try{
                                                             Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query ($_.RestoreCommand) -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
                                                         }catch{
-                                                            if ($_.ToString() -like "*Msg 4326, Level 16, State 1*") {     #log file is too early
+                                                            if ($_.ToString() -like "*Msg 4326, Level 16, State 1*" -or $_.ToString() -like "*is too early*") {     #log file is too early
                                                                 $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(),[LogType]::WRN)
                                                             }else{
                                                                 $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(),[LogType]::ERR)
