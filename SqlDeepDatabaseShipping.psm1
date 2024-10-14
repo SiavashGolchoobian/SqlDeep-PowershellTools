@@ -1515,7 +1515,7 @@ Class DatabaseShipping {
                                                         try{
                                                             Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query ($_.RestoreCommand) -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
                                                         }catch{
-                                                            if ($_.ToString() -like "*Msg 4326, Level 16, State 1*" -or $_.ToString() -like "*which is too early to apply to the database. A more recent log backup that includes*") {     #log file is too early
+                                                            if ($_.ToString() -like "*Msg 4326, Level 16, State 1*" -or $_.ToString() -like "*is too early*") {     #log file is too early
                                                                 $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(),[LogType]::WRN)
                                                             }else{
                                                                 $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(),[LogType]::ERR)
