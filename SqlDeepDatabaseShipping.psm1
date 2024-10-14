@@ -60,10 +60,10 @@ Class BackupFile {
         $this.RemoteRepositoryUncFilePath=$this.CalcRemoteRepositoryUncFilePath($FileRepositoryUncPath)
     }
     hidden [string]CalcRemoteSourceFilePath([string]$Server) {    #Converting local path to UNC path
-        Write-Verbose 'Processing Started.'
+        Write-Verbose "Processing Started."
         [string]$myAnswer=$null
         if ($this.FilePath.Contains('\\') -eq $false) {
-            $myUncPath='\\' + $Server + '\' + ($this.FilePath.Split(':') -Join '$')
+            $myUncPath='\\' + $Server + "\" + ($this.FilePath.Split(':') -Join '$')
             $myAnswer=$myUncPath
         }else {
             $myAnswer=$this.FilePath
@@ -71,9 +71,9 @@ Class BackupFile {
         return $myAnswer
     }
     hidden [string]CalcRemoteRepositoryUncFilePath ([string]$FileRepositoryUncPath) {    #Converting local path to Shared Repository UNC path
-        Write-Verbose 'Processing Started.'
+        Write-Verbose "Processing Started."
         [string]$myAnswer=$null
-        $myAnswer=$FileRepositoryUncPath + '\' + ($this.FilePath.Split('\')[-1])
+        $myAnswer=$FileRepositoryUncPath + "\" + ($this.FilePath.Split('\')[-1])
         return $myAnswer
     }
 }
@@ -88,11 +88,8 @@ Class DatabaseShipping {
     [bool]$SkipBackupFilesExistenceCheck=$false
     [nullable[datetime]]$RestoreTo=$null
     hidden [LogWriter]$LogWriter
-    hidden [string]$LogStaticMessage=''
+    hidden [string]$LogStaticMessage=""
 
-    DatabaseShipping(){
-
-    }
     DatabaseShipping([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[LogWriter]$LogWriter){
         $this.Init($SourceInstanceConnectionString,$DestinationInstanceConnectionString,$FileRepositoryUncPath,(31*24),$true,[DatabaseRecoveryMode]::RESTOREONLY,$LogWriter)
     }
@@ -102,35 +99,35 @@ Class DatabaseShipping {
     hidden Init([string]$SourceInstanceConnectionString,[string]$DestinationInstanceConnectionString,[string]$FileRepositoryUncPath,[int]$LimitMsdbScanToRecentHours,[bool]$RestoreFilesToIndividualFolders,[DatabaseRecoveryMode]$DestinationRestoreMode,[LogWriter]$LogWriter){
         $this.SourceInstanceConnectionString=$SourceInstanceConnectionString
         $this.DestinationInstanceConnectionString=$DestinationInstanceConnectionString
+        $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($FileRepositoryUncPath)
         $this.LimitMsdbScanToRecentHours=$LimitMsdbScanToRecentHours
         $this.RestoreFilesToIndividualFolders=$RestoreFilesToIndividualFolders
         $this.DestinationRestoreMode=$DestinationRestoreMode
-        $this.FileRepositoryUncPath=$FileRepositoryUncPath
         $this.LogWriter=$LogWriter
     }
 #region Functions
     hidden [string]Path_CorrectFolderPathFormat ([string]$FolderPath) {    #Correcting folder path format
         if ($this.LogWriter) {
-            $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         } else {
-            Write-Verbose 'Processing Started.'
+            Write-Verbose "Processing Started."
         }
         [string]$myAnswer=$null
         $FolderPath=$FolderPath.Trim()
-        if ($FolderPath.ToCharArray()[-1] -eq '\') {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length)}    
+        if ($FolderPath.ToCharArray()[-1] -eq "\") {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length)}    
         $myAnswer=$FolderPath
         return $myAnswer
     }
     hidden [bool]Path_IsWritable ([string]$FolderPath) {    #Check writable path
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF) 
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF) 
         [bool]$myAnswer=$false
         $FolderPath=$this.Path_CorrectFolderPathFormat($FolderPath)
         if ((Test-Path -Path $FolderPath -PathType Container) -eq $true) {
-            $myFilename=((New-Guid).ToString())+'.lck'
+            $myFilename=((New-Guid).ToString())+".lck"
             try {
-                Add-Content -Path ($FolderPath+'\'+$myFilename) -Value ''
-                if ((Test-Path -Path ($FolderPath+'\'+$myFilename) -PathType Leaf) -eq $true) {
-                    Remove-Item -Path ($FolderPath+'\'+$myFilename) -Force
+                Add-Content -Path ($FolderPath+"\"+$myFilename) -Value ""
+                if ((Test-Path -Path ($FolderPath+"\"+$myFilename) -PathType Leaf) -eq $true) {
+                    Remove-Item -Path ($FolderPath+"\"+$myFilename) -Force
                     $myAnswer=$true
                 }else{
                     $myAnswer=$false
@@ -146,7 +143,7 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [bool]Instance_ConnectivityTest([string]$ConnectionString,[string]$DatabaseName) {  #Test Instance connectivity
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [bool]$myAnswer=$false
         [string]$myCommand="
             USE [master];
@@ -161,7 +158,7 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [DestinationDbStatus]Database_GetDatabaseStatus([string]$ConnectionString,[string]$DatabaseName) {  #Check database status
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [DestinationDbStatus]$myAnswer=[DestinationDbStatus]::NotExist
         [string]$myCommand="
             USE [master];
@@ -176,8 +173,8 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [System.Object]Database_GetDatabaseLSN([string]$ConnectionString,[string]$DatabaseName) {  #Get database latest LSN
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-        [System.Object]$myAnswer=New-Object PsObject -Property @{LastLsn = [decimal]0; DiffBackupBaseLsn = [decimal]0; KnownRecoveryFork = [string]''}
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+        [System.Object]$myAnswer=New-Object PsObject -Property @{LastLsn = [decimal]0; DiffBackupBaseLsn = [decimal]0; KnownRecoveryFork = [string]""}
         [string]$myCommand="
             USE [master];
             SELECT TOP 1
@@ -205,33 +202,36 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [string]Get_StrategiesToString([RestoreStrategy[]]$Strategies) { #Get restore strategies as a comma seperated string
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [string]$myAnswer=$null
-        [string]$myAcceptedStrategies=''
+        [string]$myAcceptedStrategies=""
 
-        $Strategies | ForEach-Object{$myAcceptedStrategies+=($_.value__).ToString()+','}
-        if ($myAcceptedStrategies[-1] -eq ',') {$myAcceptedStrategies=$myAcceptedStrategies.Substring(0,$myAcceptedStrategies.Length-1)}
+        $Strategies | ForEach-Object{$myAcceptedStrategies+=($_.value__).ToString()+","}
+        if ($myAcceptedStrategies[-1] -eq ",") {$myAcceptedStrategies=$myAcceptedStrategies.Substring(0,$myAcceptedStrategies.Length-1)}
         $myAnswer=$myAcceptedStrategies
-        $this.LogWriter.Write($this.LogStaticMessage+('Strategies are: ' + $myAnswer), [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+("Strategies are: " + $myAnswer), [LogType]::INF)
 
         return $myAnswer
     }
     hidden [BackupFile[]]Database_GetBackupFileList([string]$ConnectionString,[string]$DatabaseName,[Decimal]$LatestLSN,[Decimal]$DiffBackupBaseLsn,[string]$KnownRecoveryFork) {    #Get List of backup files combination neede to restore
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [BackupFile[]]$myAnswer=$null
-
-        $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name.',[LogType]::INF)
         [string]$mySourceServerName=$null
+        [string]$myAcceptedStrategies=$null
+        [RestoreStrategy[]]$Strategies=$null
+        [string]$myBackupFileExistenceCheckCommand=$null
+        [string]$myRestoreTo=$null
+        [string]$myCommand=$null
+
+        $this.LogWriter.Write($this.LogStaticMessage+"Get Source instance server name.",[LogType]::INF)
         $mySourceServerName=$this.Database_GetServerName($ConnectionString)
         if ($null -eq $mySourceServerName) {
-            $this.LogWriter.Write($this.LogStaticMessage+'Source server name is empty.',[LogType]::ERR)
-            throw 'Source server name is empty.'
+            $this.LogWriter.Write($this.LogStaticMessage+"Source server name is empty.",[LogType]::ERR)
+            throw "Source server name is empty."
         }
 
         # Generate acceptable strategies list for TSQL
-        $this.LogWriter.Write($this.LogStaticMessage+'Determine PreferredStrategies started.',[LogType]::INF)
-        [RestoreStrategy[]]$Strategies=$null
-        [string]$myAcceptedStrategies=$null
+        $this.LogWriter.Write($this.LogStaticMessage+"Determine PreferredStrategies started.",[LogType]::INF)
         if ($LatestLSN -eq 0 -and $DiffBackupBaseLsn -eq 0){    #In this case Diff and Log backups are not usable and we should use strategies containes Full backup files
             $Strategies = $this.PreferredStrategies | Where-Object -Property value__ -NotIn ( ([RestoreStrategy]::DiffLog).value__ , ([RestoreStrategy]::Log).value__ ) #Removing any non-full backup strategies from list
             if (!($Strategies -contains [RestoreStrategy]::FullDiffLog) -and !($this.PreferredStrategies -contains [RestoreStrategy]::FullLog)){    #Add all full backup strategies to the list, if there is not atleast one full backup strategy found in the list
@@ -243,26 +243,22 @@ Class DatabaseShipping {
         }
 
         if ($null -eq $myAcceptedStrategies -or $myAcceptedStrategies.Trim().Length -eq 0) {
-            $this.LogWriter.Write($this.LogStaticMessage+'PreferredStrategies is empty.',[LogType]::ERR)
-            throw 'PreferredStrategies is empty.'
+            $this.LogWriter.Write($this.LogStaticMessage+"PreferredStrategies is empty.",[LogType]::ERR)
+            throw "PreferredStrategies is empty."
         }
 
         # Generate FileExistenceCheck command
-        $this.LogWriter.Write($this.LogStaticMessage+'Determine File Existence Check according to SkipBackupFilesExistenceCheck started.',[LogType]::INF)
-        [string]$myBackupFileExistenceCheckCommand=$null
+        $this.LogWriter.Write($this.LogStaticMessage+"Determine File Existence Check according to SkipBackupFilesExistenceCheck started.",[LogType]::INF)
         if ($this.SkipBackupFilesExistenceCheck){
-            $myBackupFileExistenceCheckCommand='CAST(1 AS BIT) AS IsFilesExists'
+            $myBackupFileExistenceCheckCommand="CAST(1 AS BIT) AS IsFilesExists"
         }else{
             $myBackupFileExistenceCheckCommand="CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists"
         }
 
         # Generate RecoveryTime
-        [string]$myRestoreTo=$null
         $myRestoreTo=(Get-Date).ToString()
         if ($this.RestoreTo) {$myRestoreTo=($this.RestoreTo).ToString()}
 
-        # Generate BackupFileListQuery
-        [string]$myCommand=$null
         $myCommand = "
         USE [tempdb];
         DECLARE @myDBName AS NVARCHAR(255);
@@ -1095,7 +1091,7 @@ Class DatabaseShipping {
         "
         try{
             #$this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
-            $this.LogWriter.Write($this.LogStaticMessage+'Query Backupfiles list.',[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+"Query Backupfiles list.",[LogType]::INF)
             [System.Data.DataRow[]]$myRecords=$null
             $myRecords=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
             if ($null -ne $myRecords){
@@ -1114,7 +1110,7 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [string]Database_GetServerName([string]$ConnectionString) {  #Get database server netbios name
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [string]$myAnswer=$null
         [string]$myCommand="
             SELECT @@SERVERNAME, CASE CHARINDEX('\',@@SERVERNAME) WHEN 0 THEN @@SERVERNAME ELSE SUBSTRING(@@SERVERNAME,0,CHARINDEX('\',@@SERVERNAME)) END AS ServerName
@@ -1128,7 +1124,7 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [bool]Database_DropDatabase([string]$ConnectionString,[string]$DatabaseName) {  #Drop database
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [bool]$myAnswer=$false
         [string]$myCommand="
             USE [master];
@@ -1150,12 +1146,12 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [string]Database_GetDefaultDbFolderLocations([string]$ConnectionString,[DatabaseFileType]$FileType) {  #Get default location of data file and log file
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [string]$myAnswer=$null
         [string]$myPropery=switch ($FileType) {
-            'DATA'{'InstanceDefaultDataPath'}
-            'LOG'{'InstanceDefaultLogPath'}
-            Default {'InstanceDefaultDataPath'}
+            "DATA"{"InstanceDefaultDataPath"}
+            "LOG"{"InstanceDefaultLogPath"}
+            Default {"InstanceDefaultDataPath"}
         }
         $myCommand="
             USE [master];
@@ -1170,7 +1166,7 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [string]Database_CreateFolder([string]$ConnectionString,[string]$FolderPath) {  #Create folder via TSQL
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [string]$myAnswer=$null
         [string]$myCommand="
             USE [master];
@@ -1217,7 +1213,7 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [bool]Database_RecoverDatabase([string]$ConnectionString,[string]$DatabaseName) {  #Recover database
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
         [bool]$myAnswer=$false
         [string]$myCommand="
             USE [master];
@@ -1234,9 +1230,9 @@ Class DatabaseShipping {
         }
         return $myAnswer
     }
-    hidden [string]BackupFileList_MergeBackupFilePath ([BackupFile[]]$Items,[string]$Delimiter=',') {   #Merge RemoteRepositoryUncFilePath property of input array
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-        [string]$myAnswer=''
+    hidden [string]BackupFileList_MergeBackupFilePath ([BackupFile[]]$Items,[string]$Delimiter=",") {   #Merge RemoteRepositoryUncFilePath property of input array
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+        [string]$myAnswer=""
         foreach ($myItem in $Items) {
             $myAnswer+=($myItem.RemoteRepositoryUncFilePath+$Delimiter)
         }
@@ -1244,27 +1240,27 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [string]BackupFileList_GenerateDestinationDatabaseFilesLocationFromBackupFile([string]$ConnectionString,[string]$DatabaseName,[string]$MergedPaths,[string]$PathDelimiter,[string]$DefaultDestinationDataFolderLocation,[string]$DefaultDestinationLogFolderLocation) {    #Generate Destination database file location from backup file list only
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-        [string]$myAnswer=''
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+        [string]$myAnswer=""
         [string]$myBakupFilePaths="DISK = '" + $MergedPaths.Replace($PathDelimiter,"', DISK ='") + "'"
         [string]$myCommand = "RESTORE FILELISTONLY FROM " + $myBakupFilePaths + ";"
-        [string]$myRestoreLocation=''
+        [string]$myRestoreLocation=""
         try{
             $myRecord=Invoke-Sqlcmd -ConnectionString $ConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
             if ($null -eq $myRecord) {
-                $this.LogWriter.Write($this.LogStaticMessage+('Can not determine database files inside backup file(s) from file(s): ' + $MergedPaths), [LogType]::ERR)
-                throw ('Can not determine database files inside backup file(s) from file(s): ' + $MergedPaths)
+                $this.LogWriter.Write($this.LogStaticMessage+("Can not determine database files inside backup file(s) from file(s): " + $MergedPaths), [LogType]::ERR)
+                throw ("Can not determine database files inside backup file(s) from file(s): " + $MergedPaths)
             }
             foreach ($myDbFile in $myRecord) {
-                [string]$myFolderLocation=''
-                [string]$myFileName=''
-                if ($myDbFile.Type -eq 'L') {
+                [string]$myFolderLocation=""
+                [string]$myFileName=""
+                if ($myDbFile.Type -eq "L") {
                     $myFolderLocation=$DefaultDestinationLogFolderLocation
                 }else{
                     $myFolderLocation=$DefaultDestinationDataFolderLocation
                 }
-                $myFileName=$myDbFile.PhysicalName.Split('\')[-1]
-                $myRestoreLocation+="MOVE '" + ($myDbFile.LogicalName) + "' TO '" + $myFolderLocation + $DatabaseName + '_' + $myFileName +"',"
+                $myFileName=$myDbFile.PhysicalName.Split("\")[-1]
+                $myRestoreLocation+="MOVE '" + ($myDbFile.LogicalName) + "' TO '" + $myFolderLocation + $DatabaseName + "_" + $myFileName +"',"
             }
             $myAnswer=$myRestoreLocation.Substring(0,$myRestoreLocation.Length-1)
         }Catch{
@@ -1274,27 +1270,27 @@ Class DatabaseShipping {
         return $myAnswer
     }
     hidden [string]BackupFileList_GenerateRestoreBackupCommand([string]$DatabaseName,[string]$BackupType,[int]$Position,[string]$MergedPaths,[string]$PathDelimiter,[string]$RestoreLocation) {    #Generate Restore Command
-        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-        [string]$myAnswer=''
-        [string]$myRestoreLocation=''
-        [string]$myBakupFilePaths=''
-        [string]$myStopAt=''
+        $this.LogWriter.Write($this.LogStaticMessage+"Processing Started.", [LogType]::INF)
+        [string]$myAnswer=""
+        [string]$myRestoreLocation=""
+        [string]$myBakupFilePaths=""
+        [string]$myStopAt=""
         [string]$myRestoreType=switch ($BackupType) {
-            'D'{'RESTORE DATABASE'}
-            'I'{'RESTORE DATABASE'}
-            'L'{'RESTORE LOG'}
-            Default {'RESTORE DATABASE'}
+            "D"{"RESTORE DATABASE"}
+            "I"{"RESTORE DATABASE"}
+            "L"{"RESTORE LOG"}
+            Default {"RESTORE DATABASE"}
         }
-        if (($this.RestoreTo) -and ($BackupType -eq 'L') -and ($this.DestinationRestoreMode -eq [DatabaseRecoveryMode]::RECOVERY)) {$myStopAt=", STOPAT = '" + ($this.RestoreTo).ToString() + "' "}
-        if ($BackupType -eq 'D') {$myRestoreLocation = ', ' + $RestoreLocation} else {$myRestoreLocation=''}
+        if (($this.RestoreTo) -and ($BackupType -eq "L") -and ($this.DestinationRestoreMode -eq [DatabaseRecoveryMode]::RECOVERY)) {$myStopAt=", STOPAT = '" + ($this.RestoreTo).ToString() + "' "}
+        if ($BackupType -eq "D") {$myRestoreLocation = ", " + $RestoreLocation} else {$myRestoreLocation=""}
         $myBakupFilePaths="DISK = '" + $MergedPaths.Replace($PathDelimiter,"', DISK ='") + "'"
-        $myAnswer = $myRestoreType + ' [' + $DatabaseName + '] FROM ' + $myBakupFilePaths + ' WITH File = ' + $Position.ToString() + $myRestoreLocation + $myStopAt + ', NORECOVERY, STATS=5;'
+        $myAnswer = $myRestoreType + " [" + $DatabaseName + "] FROM " + $myBakupFilePaths + " WITH File = " + $Position.ToString() + $myRestoreLocation + $myStopAt + ", NORECOVERY, STATS=5;"
         return $myAnswer
     }
     [void] ShipAllUserDatabases([string]$DestinationPrefix,[string[]]$ExcludedList){  #Ship all sql instance user databases (except/exclude some ones) from source to destination
-        Write-Verbose ('ShipAllUserDatabases with ' + $DestinationPrefix + ' Prefix')
-        $this.LogWriter.Write($this.LogStaticMessage+('ShipAllUserDatabases with ' + $DestinationPrefix + ' Prefix'),[LogType]::INF)
-        [string]$myExludedDB=''
+        Write-Verbose ("ShipAllUserDatabases with " + $DestinationPrefix + " Prefix")
+        $this.LogWriter.Write($this.LogStaticMessage+("ShipAllUserDatabases with " + $DestinationPrefix + " Prefix"),[LogType]::INF)
+        [string]$myExludedDB=""
         [string]$myDestinationDB=$null
         [string]$myOriginalLogFilePath=$null
 
@@ -1304,9 +1300,9 @@ Class DatabaseShipping {
                 $myExludedDB+=",'" + $myExceptedDB.Trim() + "'"
             }
         }
-        if ($null -eq $DestinationPrefix){$DestinationPrefix=''}
+        if ($null -eq $DestinationPrefix){$DestinationPrefix=""}
         [string]$myCommand="
-            SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+") ORDER BY [name]
+            SELECT [name] AS [DbName] FROM sys.databases WHERE [state]=0 AND [name] NOT IN ('master','msdb','model','tempdb','SSISDB','DWConfiguration','DWDiagnostics','DWQueue','SqlDeep','distribution'"+$myExludedDB+")
             "
         try{
             $myRecord=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
@@ -1322,12 +1318,12 @@ Class DatabaseShipping {
         }
     }
     [void] ShipDatabases([string[]]$SourceDB,[string]$DestinationPrefix){   #Ship list of databases from source to destination
-        Write-Verbose ('ShipDatabases('+ $SourceDB.Count.ToString() +') with ' + $DestinationPrefix + ' Prefix')
+        Write-Verbose ("ShipDatabases("+ $SourceDB.Count.ToString() +") with " + $DestinationPrefix + " Prefix")
         [string]$myDestinationDB=$null
         [string]$myOriginalLogFilePath=$null
 
         $myOriginalLogFilePath=$this.LogWriter.LogFilePathPattern
-        if ($null -eq $DestinationPrefix){$DestinationPrefix=''}
+        if ($null -eq $DestinationPrefix){$DestinationPrefix=""}
         if ($null -ne $SourceDB){
             foreach ($mySourceDB in $SourceDB){
                 $this.LogWriter.LogFilePath=$myOriginalLogFilePath
@@ -1339,94 +1335,93 @@ Class DatabaseShipping {
     [void] ShipDatabase([string]$SourceDB,[string]$DestinationDB){  #Ship a databases from source to destination
         try {
             #--=======================Initial Log Modules
-            Write-Verbose ('===== ShipDatabase ' + $SourceDB + ' as ' + $DestinationDB + ' started. =====')
+            Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " started. =====")
             $this.LogStaticMessage= "{""SourceDB"":""" + $SourceDB + """,""DestinationDB"":""" + $DestinationDB+"""} : "
-            $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$DestinationDB)
+            $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace("{Database}",$DestinationDB)
             $this.LogWriter.Reinitialize()
-            $this.LogWriter.Write($this.LogStaticMessage+'===== Shipping process started... ===== ', [LogType]::INF) 
-            $this.LogWriter.Write($this.LogStaticMessage+('ShipDatabase ' + $SourceDB + ' as ' + $DestinationDB), [LogType]::INF) 
-            $this.LogWriter.Write($this.LogStaticMessage+'Initializing EventsTable.Create.', [LogType]::INF) 
+            $this.LogWriter.Write($this.LogStaticMessage+"===== Shipping process started... ===== ", [LogType]::INF) 
+            $this.LogWriter.Write($this.LogStaticMessage+("ShipDatabase " + $SourceDB + " as " + $DestinationDB), [LogType]::INF) 
+            $this.LogWriter.Write($this.LogStaticMessage+"Initializing EventsTable.Create.", [LogType]::INF) 
 
             #--=======================Set constants
-            [string]$myDelimiter=','
+            [string]$myDelimiter=","
             [decimal]$myLatestLSN=0
             [decimal]$myDiffBackupBaseLsn=0
-            [string]$myKnownRecoveryFork=''
+            [string]$myKnownRecoveryFork=""
             [string]$myCurrentMachineName=([Environment]::MachineName).ToUpper()
             [string]$mySourceBackupMachineName=$null
             [string]$mySourceBackupFilePath=$null
-            $this.FileRepositoryUncPath=$this.Path_CorrectFolderPathFormat($this.FileRepositoryUncPath)
 
             #--=======================Validate input parameters
             if ($SourceDB.Trim().Length -eq 0) {
-                $this.LogWriter.Write($this.LogStaticMessage+'Source SourceDB is empty.',[LogType]::INF)
-                throw ($this.LogStaticMessage+'Source SourceDB is empty.')
+                $this.LogWriter.Write($this.LogStaticMessage+"Source SourceDB is empty.",[LogType]::INF)
+                throw ($this.LogStaticMessage+"Source SourceDB is empty.")
             }
             if ($null -eq $DestinationDB -or $DestinationDB.Trim().Length -eq 0) {
-                $this.LogWriter.Write($this.LogStaticMessage+'DestinationDB is empty, SourceDB name is used as DestinationDB name.',[LogType]::WRN)
+                $this.LogWriter.Write($this.LogStaticMessage+"DestinationDB is empty, SourceDB name is used as DestinationDB name.",[LogType]::WRN)
                 $DestinationDB=$SourceDB
             }
 
             #--=======================Check source connectivity
-            $this.LogWriter.Write($this.LogStaticMessage+('Check Source Instance Connectivity of ' + $this.SourceInstanceConnectionString),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Check Source Instance Connectivity of " + $this.SourceInstanceConnectionString),[LogType]::INF)
             if ($this.Instance_ConnectivityTest($this.SourceInstanceConnectionString,$SourceDB) -eq $false) {
-                $this.LogWriter.Write($this.LogStaticMessage+'Source Instance Connection failure.',[LogType]::ERR)
-                throw ($this.LogStaticMessage+'Source Instance Connection failure.')
+                $this.LogWriter.Write($this.LogStaticMessage+"Source Instance Connection failure.",[LogType]::ERR)
+                throw ($this.LogStaticMessage+"Source Instance Connection failure.")
             }
 
             #--=======================Check destination connectivity
-            $this.LogWriter.Write($this.LogStaticMessage+('Check Destination Instance Connectivity of ' + $this.DestinationInstanceConnectionString),[LogType]::INF)
-            if ($this.Instance_ConnectivityTest($this.DestinationInstanceConnectionString,'master') -eq $false) {
-                $this.LogWriter.Write($this.LogStaticMessage+'Destination Instance Connection failure.',[LogType]::ERR)
-                throw ($this.LogStaticMessage+'Destination Instance Connection failure.')
+            $this.LogWriter.Write($this.LogStaticMessage+("Check Destination Instance Connectivity of " + $this.DestinationInstanceConnectionString),[LogType]::INF)
+            if ($this.Instance_ConnectivityTest($this.DestinationInstanceConnectionString,"master") -eq $false) {
+                $this.LogWriter.Write($this.LogStaticMessage+"Destination Instance Connection failure.",[LogType]::ERR)
+                throw ($this.LogStaticMessage+"Destination Instance Connection failure.")
             } 
 
             #--=======================Check destination db existance status
-            $this.LogWriter.Write($this.LogStaticMessage+('Check Destination DB existance for ' + $DestinationDB),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Check Destination DB existance for " + $DestinationDB),[LogType]::INF)
             $myDestinationDbStatus=[DestinationDbStatus]::Unknown
             $myDestinationDbStatus=[DestinationDbStatus]($this.Database_GetDatabaseStatus($this.DestinationInstanceConnectionString,$DestinationDB))
-            $this.LogWriter.Write($this.LogStaticMessage+('Destination DB status is ' + $myDestinationDbStatus),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Destination DB status is " + $myDestinationDbStatus),[LogType]::INF)
             If (($myDestinationDbStatus -eq [DestinationDbStatus]::Online) -or ($myDestinationDbStatus -eq [DestinationDbStatus]::NotExist) -or ($myDestinationDbStatus -eq [DestinationDbStatus]::Restoring)){
-                $this.LogWriter.Write($this.LogStaticMessage+('Destination DB status is ' + $myDestinationDbStatus),[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("Destination DB status is " + $myDestinationDbStatus),[LogType]::INF)
             }else{
-                $this.LogWriter.Write($this.LogStaticMessage+('Destination database status is not allowd for processing, Destination DB status is ' + $myDestinationDbStatus),[LogType]::ERR)
-                throw ($this.LogStaticMessage+'Destination database status is not allowd for processing, Destination DB status is ' + $myDestinationDbStatus)
+                $this.LogWriter.Write($this.LogStaticMessage+("Destination database status is not allowd for processing, Destination DB status is " + $myDestinationDbStatus),[LogType]::ERR)
+                throw ($this.LogStaticMessage+"Destination database status is not allowd for processing, Destination DB status is " + $myDestinationDbStatus)
             }
 
             #--=======================Get DB Backup file combinations
             If (($myDestinationDbStatus -eq [DestinationDbStatus]::Online) -or ($myDestinationDbStatus -eq [DestinationDbStatus]::NotExist)){
-                $this.LogWriter.Write($this.LogStaticMessage+('Get DB Backup file combinations, for: ' + $DestinationDB),[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("Get DB Backup file combinations, for: " + $DestinationDB),[LogType]::INF)
                 $myLatestLSN=[decimal]0
                 $myDiffBackupBaseLsn=[decimal]0
-                $myKnownRecoveryFork=[string]''
+                $myKnownRecoveryFork=[string]""
             }elseif ($myDestinationDbStatus -eq [DestinationDbStatus]::Restoring) {
-                $this.LogWriter.Write($this.LogStaticMessage+('Get DB Backup file combinations, for: ' + $DestinationDB),[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("Get DB Backup file combinations, for: " + $DestinationDB),[LogType]::INF)
                 $myLsnAnswers=$this.Database_GetDatabaseLSN($this.DestinationInstanceConnectionString,$DestinationDB)
                 $myLatestLSN=$myLsnAnswers.LastLsn
                 $myDiffBackupBaseLsn=$myLsnAnswers.DiffBackupBaseLsn
                 $myKnownRecoveryFork=$myLsnAnswers.KnownRecoveryFork
             }
-            $this.LogWriter.Write($this.LogStaticMessage+('Latest LSN is: ' + $myLatestLSN.ToString()),[LogType]::INF)
-            $this.LogWriter.Write($this.LogStaticMessage+('DiffBackupBaseLsn is: ' + $myDiffBackupBaseLsn.ToString()),[LogType]::INF)
-            $this.LogWriter.Write($this.LogStaticMessage+('KnownRecoveryFork is: ' + $myKnownRecoveryFork.ToString()),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Latest LSN is: " + $myLatestLSN.ToString()),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("DiffBackupBaseLsn is: " + $myDiffBackupBaseLsn.ToString()),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("KnownRecoveryFork is: " + $myKnownRecoveryFork.ToString()),[LogType]::INF)
 
             [BackupFile[]]$myBackupFileList=$null
             $myBackupFileList=$this.Database_GetBackupFileList($this.SourceInstanceConnectionString,$SourceDB,$myLatestLSN,$myDiffBackupBaseLsn,$myKnownRecoveryFork)
             if ($null -eq $myBackupFileList -or $myBackupFileList.Count -eq 0) {
                 $myRestoreStrategy = [RestoreStrategy]::NotExist
-                $this.LogWriter.Write($this.LogStaticMessage+'There is nothing(no files) to restore.',[LogType]::WRN)
+                $this.LogWriter.Write($this.LogStaticMessage+"There is nothing(no files) to restore.",[LogType]::WRN)
                 return
-                #throw ($this.LogStaticMessage+'There is nothing(no files) to restore.')
+                #throw ($this.LogStaticMessage+"There is nothing(no files) to restore.")
             } else {
                 $myRestoreStrategy=[RestoreStrategy]($myBackupFileList[0].StrategyNo)
             }
-            $this.LogWriter.Write($this.LogStaticMessage+('Selected strategy is: ' + $myRestoreStrategy),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Selected strategy is: " + $myRestoreStrategy),[LogType]::INF)
 
             #--=======================Copy DB Backup files to FileRepositoryPath
-            $this.LogWriter.Write($this.LogStaticMessage+'Check Writeable FileRepositoryPath.',[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+"Check Writeable FileRepositoryPath.",[LogType]::INF)
             if ($this.Path_IsWritable($this.FileRepositoryUncPath) -eq $false) {
-                $this.LogWriter.Write($this.LogStaticMessage+'FileRepositoryPath is not accesible.',[LogType]::ERR)
-                throw ($this.LogStaticMessage+'FileRepositoryPath is not accesible.')
+                $this.LogWriter.Write($this.LogStaticMessage+"FileRepositoryPath is not accesible.",[LogType]::ERR)
+                throw ($this.LogStaticMessage+"FileRepositoryPath is not accesible.")
             }
 
             $myCurrentMachineName=([Environment]::MachineName).ToUpper()
@@ -1438,70 +1433,70 @@ Class DatabaseShipping {
                     $mySourceBackupFilePath=$myBackupFile.RemoteSourceFilePath
                 }
                 Copy-Item -Path $mySourceBackupFilePath -Destination ($this.FileRepositoryUncPath) -Force -ErrorAction Stop
-                $this.LogWriter.Write($this.LogStaticMessage+('Copy backup file from ' + $mySourceBackupFilePath + ' to ' + ($this.FileRepositoryUncPath)),[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("Copy backup file from " + $mySourceBackupFilePath + " to " + ($this.FileRepositoryUncPath)),[LogType]::INF)
             }
 
             #--=======================Drop not in restoring mode databases
             If ($myDestinationDbStatus -eq [DestinationDbStatus]::Online -or $myRestoreStrategy -eq [RestoreStrategy]::FullDiffLog -or $myRestoreStrategy -eq [RestoreStrategy]::FullLog){
-                $this.LogWriter.Write($this.LogStaticMessage+('Drop Database : ' + $DestinationDB),[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("Drop Database : " + $DestinationDB),[LogType]::INF)
 
                 $myExistedDestinationDbDropped=$this.Database_DropDatabase($this.DestinationInstanceConnectionString,$DestinationDB)
                 if ($myExistedDestinationDbDropped -eq $false) {
-                    $this.LogWriter.Write($this.LogStaticMessage+('Could not drop destination database: ' + $DestinationDB),[LogType]::ERR)
-                    throw ($this.LogStaticMessage+'Could not drop destination database: ' + $DestinationDB)
+                    $this.LogWriter.Write($this.LogStaticMessage+("Could not drop destination database: " + $DestinationDB),[LogType]::ERR)
+                    throw ($this.LogStaticMessage+"Could not drop destination database: " + $DestinationDB)
                 }
             }
 
             #--=======================Get destination file locations
-            $this.LogWriter.Write($this.LogStaticMessage+('Get destination folder locations of: ' + ($this.DestinationInstanceConnectionString)),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Get destination folder locations of: " + ($this.DestinationInstanceConnectionString)),[LogType]::INF)
             $myDefaultDestinationDataFolderLocation=$this.Database_GetDefaultDbFolderLocations($this.DestinationInstanceConnectionString,[DatabaseFileType]::DATA)
             $myDefaultDestinationLogFolderLocation=$this.Database_GetDefaultDbFolderLocations($this.DestinationInstanceConnectionString,[DatabaseFileType]::LOG)
             If ($null -eq $myDefaultDestinationDataFolderLocation){
-                $this.LogWriter.Write($this.LogStaticMessage+('Default Data folder location is empty on: ' + $this.DestinationInstanceConnectionString),[LogType]::ERR)
-                throw ($this.LogStaticMessage+'Default Data folder location is empty on: ' + $this.DestinationInstanceConnectionString)
+                $this.LogWriter.Write($this.LogStaticMessage+("Default Data folder location is empty on: " + $this.DestinationInstanceConnectionString),[LogType]::ERR)
+                throw ($this.LogStaticMessage+"Default Data folder location is empty on: " + $this.DestinationInstanceConnectionString)
             }
             If ($null -eq $myDefaultDestinationLogFolderLocation){
-                $this.LogWriter.Write($this.LogStaticMessage+('Default Log folder location is empty on: ' + $this.DestinationInstanceConnectionString),[LogType]::ERR)
-                throw ($this.LogStaticMessage+'Default Log folder location is empty on: ' + $this.DestinationInstanceConnectionString)
+                $this.LogWriter.Write($this.LogStaticMessage+("Default Log folder location is empty on: " + $this.DestinationInstanceConnectionString),[LogType]::ERR)
+                throw ($this.LogStaticMessage+"Default Log folder location is empty on: " + $this.DestinationInstanceConnectionString)
             }
 
-            $this.LogWriter.Write($this.LogStaticMessage+'Calculate RestoreLocation Folder',[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+"Calculate RestoreLocation Folder",[LogType]::INF)
             if ($this.RestoreFilesToIndividualFolders) {
-                $myDefaultDestinationDataFolderLocation += $DestinationDB.Replace(' ','_') + '\'
-                $myDefaultDestinationLogFolderLocation += $DestinationDB.Replace(' ','_') + '\'
+                $myDefaultDestinationDataFolderLocation += $DestinationDB.Replace(" ","_") + "\"
+                $myDefaultDestinationLogFolderLocation += $DestinationDB.Replace(" ","_") + "\"
             }
 
-            $this.LogWriter.Write($this.LogStaticMessage+('Data file RestoreLocation folder is ' + $myDefaultDestinationDataFolderLocation),[LogType]::INF)
-            $this.LogWriter.Write($this.LogStaticMessage+('Log file RestoreLocation folder is ' + $myDefaultDestinationLogFolderLocation),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Data file RestoreLocation folder is " + $myDefaultDestinationDataFolderLocation),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Log file RestoreLocation folder is " + $myDefaultDestinationLogFolderLocation),[LogType]::INF)
 
-            $this.LogWriter.Write($this.LogStaticMessage+'Create RestoreLocation folders, if not exists.',[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+"Create RestoreLocation folders, if not exists.",[LogType]::INF)
             $this.Database_CreateFolder($this.DestinationInstanceConnectionString,$myDefaultDestinationDataFolderLocation)
             $this.Database_CreateFolder($this.DestinationInstanceConnectionString,$myDefaultDestinationLogFolderLocation)
 
-            $this.LogWriter.Write($this.LogStaticMessage+'Generate RestoreLocation',[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+"Generate RestoreLocation",[LogType]::INF)
             [int]$myMediasetId=$myBackupFileList[0].MediaSetId
             [string]$myMediasetMergedPath=$myBackupFileList | Where-Object -Property MediaSetId -EQ $myMediasetId | Group-Object -Property MediaSetId,Position | ForEach-Object{$this.BackupFileList_MergeBackupFilePath($_.Group,$myDelimiter)}
             [string]$myRestoreLocation = $this.BackupFileList_GenerateDestinationDatabaseFilesLocationFromBackupFile($this.DestinationInstanceConnectionString,$DestinationDB,$myMediasetMergedPath,$myDelimiter,$myDefaultDestinationDataFolderLocation,$myDefaultDestinationLogFolderLocation)
             if ($null -eq $myRestoreLocation -or $myRestoreLocation.Length -eq 0) {
-                $this.LogWriter.Write($this.LogStaticMessage+'Can not get Restore location.',[LogType]::ERR)
-                throw ($this.LogStaticMessage+'Can not get Restore location.')
+                $this.LogWriter.Write($this.LogStaticMessage+"Can not get Restore location.",[LogType]::ERR)
+                throw ($this.LogStaticMessage+"Can not get Restore location.")
             }else{
-                $this.LogWriter.Write($this.LogStaticMessage+('Restore Location is: ' + $myRestoreLocation),[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("Restore Location is: " + $myRestoreLocation),[LogType]::INF)
             }
 
             #--=======================Restoring backup(s) in destination
-            $this.LogWriter.Write($this.LogStaticMessage+'Generate RestoreList',[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+"Generate RestoreList",[LogType]::INF)
             $myRestoreList=$myBackupFileList | Group-Object -Property MediaSetId,Position | ForEach-Object{[PSCustomObject]@{
-                MediaSetId=$_.Name.Split(',')[0]; 
+                MediaSetId=$_.Name.Split(",")[0]; 
                 Order=($_.Group | Sort-Object ID | Select-Object -Last 1 -Property ID).ID;
-                RestoreCommand=$($this.BackupFileList_GenerateRestoreBackupCommand($DestinationDB,(($_.Group | Select-Object -Last 1 -Property BackupType).BackupType),($_.Name.Split(',')[1]),($this.BackupFileList_MergeBackupFilePath($_.Group,$myDelimiter)),$myDelimiter,$myRestoreLocation));
+                RestoreCommand=$($this.BackupFileList_GenerateRestoreBackupCommand($DestinationDB,(($_.Group | Select-Object -Last 1 -Property BackupType).BackupType),($_.Name.Split(",")[1]),($this.BackupFileList_MergeBackupFilePath($_.Group,$myDelimiter)),$myDelimiter,$myRestoreLocation));
             }}
 
-            $this.LogWriter.Write($this.LogStaticMessage+'Run Restore Commands',[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+"Run Restore Commands",[LogType]::INF)
             If ($null -ne $myRestoreList){
                 try{
                     $myRestoreList | ForEach-Object{
-                                                        $this.LogWriter.Write($this.LogStaticMessage+('Restore Command:' + $_.RestoreCommand),[LogType]::INF);
+                                                        $this.LogWriter.Write($this.LogStaticMessage+("Restore Command:" + $_.RestoreCommand),[LogType]::INF);
                                                         try{
                                                             Invoke-Sqlcmd -ConnectionString $this.DestinationInstanceConnectionString -Query ($_.RestoreCommand) -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
                                                         }catch{
@@ -1518,45 +1513,37 @@ Class DatabaseShipping {
                     throw
                 }
             }else{
-                $this.LogWriter.Write($this.LogStaticMessage+'There is no commands to execute.',[LogType]::WRN)
+                $this.LogWriter.Write($this.LogStaticMessage+"There is no commands to execute.",[LogType]::WRN)
             }
 
             #--=======================Remove copied files
-            $this.LogWriter.Write($this.LogStaticMessage+'Remove copied files.',[LogType]::INF)
-            $myBackupFileList | ForEach-Object{Remove-Item -Path ($_.RemoteRepositoryUncFilePath); $this.LogWriter.Write($this.LogStaticMessage+('Remove file ' + $_.RemoteRepositoryUncFilePath),[LogType]::INF)}
+            $this.LogWriter.Write($this.LogStaticMessage+"Remove copied files.",[LogType]::INF)
+            $myBackupFileList | ForEach-Object{Remove-Item -Path ($_.RemoteRepositoryUncFilePath); $this.LogWriter.Write($this.LogStaticMessage+("Remove file " + $_.RemoteRepositoryUncFilePath),[LogType]::INF)}
 
             #--=======================SetDestinationDBMode
-            $this.LogWriter.Write($this.LogStaticMessage+('Set destination database mode to ' + $this.DestinationRestoreMode),[LogType]::INF)
+            $this.LogWriter.Write($this.LogStaticMessage+("Set destination database mode to " + $this.DestinationRestoreMode),[LogType]::INF)
             if ($this.DestinationRestoreMode -eq [DatabaseRecoveryMode]::RECOVERY) {
                 $myRecoveryStatus=$this.Database_RecoverDatabase($this.DestinationInstanceConnectionString,$DestinationDB)
                 if ($myRecoveryStatus -eq $false) {
-                    $this.LogWriter.Write($this.LogStaticMessage+('Database ' + $DestinationDB + ' does not exists or could not be recovered.'),[LogType]::INF)
+                    $this.LogWriter.Write($this.LogStaticMessage+("Database " + $DestinationDB + " does not exists or could not be recovered."),[LogType]::INF)
                 }
             }
         }catch{
             Write-Error ($_.ToString())
             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
         }finally{
-            [string]$myLastBackupFilePath=''
-            [string]$myLastBackupStartTime=''
-            Write-Verbose ('===== ShipDatabase ' + $SourceDB + ' as ' + $DestinationDB + ' finished. =====')
-            $this.LogWriter.Write($this.LogStaticMessage+('ShipDatabase ' + $SourceDB + ' as ' + $DestinationDB + ' finished.'), [LogType]::INF) 
-            if ($null -ne $myBackupFileList -and $myBackupFileList.Count -ne 0) {
-                    $myLastBackupFilePath=$myBackupFileList[-1].FilePath 
-                    $myLastBackupStartTime=$myBackupFileList[-1].BackupStartTime.ToString()
-                }
-
+            Write-Verbose ("===== ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished. =====")
+            $this.LogWriter.Write($this.LogStaticMessage+("ShipDatabase " + $SourceDB + " as " + $DestinationDB + " finished."), [LogType]::INF) 
             if ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -eq 0) {
-                $this.LogWriter.Write($this.LogStaticMessage+'Finished.',[LogType]::INF)
-                $this.LogWriter.Write($this.LogStaticMessage+('ProceessInfo->SourceDB:' + $SourceDB + ',DestinationDB:' + $DestinationDB + ',LatestRestoredFile:' + $myLastBackupFilePath + ',LatestRestoreFileTime:' + $myLastBackupStartTime), [LogType]::INF) 
+                $this.LogWriter.Write($this.LogStaticMessage+"Finished.",[LogType]::INF)
+                $this.LogWriter.Write($this.LogStaticMessage+("ProcessInfo->SourceDB:" + $SourceDB + ",DestinationDB:" + $DestinationDB + ",LatestRestoredFile:" + $myBackupFileList[-1].FilePath + ",LatestRestoreFileTime:" + $myBackupFileList[-1].BackupStartTime.ToString()), [LogType]::INF) 
             }elseif ($this.LogWriter.ErrCount -eq 0 -and $this.LogWriter.WrnCount -gt 0) {
-                $this.LogWriter.Write($this.LogStaticMessage+('Finished with ' + $this.LogWriter.WrnCount.ToString() + ' Warning(s).'),[LogType]::WRN)
-                $this.LogWriter.Write($this.LogStaticMessage+('ProceessInfo->SourceDB:' + $SourceDB + ',DestinationDB:' + $DestinationDB + ',LatestRestoredFile:' + $myLastBackupFilePath + ',LatestRestoreFileTime:' + $myLastBackupStartTime), [LogType]::INF) 
+                $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::WRN)
+                $this.LogWriter.Write($this.LogStaticMessage+("ProcessInfo->SourceDB:" + $SourceDB + ",DestinationDB:" + $DestinationDB + ",LatestRestoredFile:" + $myBackupFileList[-1].FilePath + ",LatestRestoreFileTime:" + $myBackupFileList[-1].BackupStartTime.ToString()), [LogType]::INF) 
             }else{
-                $this.LogWriter.Write($this.LogStaticMessage+('Finished with ' + $this.LogWriter.ErrCount.ToString() + ' Error(s) and ' + $this.LogWriter.WrnCount.ToString() + ' Warning(s).'),[LogType]::ERR)
-                $this.LogWriter.Write($this.LogStaticMessage+('ProceessInfo->SourceDB:' + $SourceDB + ',DestinationDB:' + $DestinationDB + ',LatestRestoredFile:ERROR,LatestRestoreFileTime:ERROR'), [LogType]::INF) 
+                $this.LogWriter.Write($this.LogStaticMessage+("Finished with " + $this.LogWriter.ErrCount.ToString() + " Error(s) and " + $this.LogWriter.WrnCount.ToString() + " Warning(s)."),[LogType]::ERR)
             }
-            $this.LogWriter.Write($this.LogStaticMessage+'===== Shipping process finished. ===== ', [LogType]::INF) 
+            $this.LogWriter.Write($this.LogStaticMessage+"===== Shipping process finished. ===== ", [LogType]::INF) 
         }
     }
 
@@ -1573,7 +1560,7 @@ Function New-DatabaseShipping {
         [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter
     )
-    Write-Verbose 'Creating New-DatabaseShipping'
+    Write-Verbose "Creating New-DatabaseShipping"
     [string]$mySourceInstanceConnectionString=$SourceInstanceConnectionString
     [string]$myDestinationInstanceConnectionString=$DestinationInstanceConnectionString
     [string]$myFileRepositoryUncPath=$FileRepositoryUncPath
@@ -1582,7 +1569,7 @@ Function New-DatabaseShipping {
     [DatabaseRecoveryMode]$myDestinationRestoreMode=$DestinationRestoreMode
     [LogWriter]$myLogWriter=$LogWriter
     [DatabaseShipping]::New($mySourceInstanceConnectionString,$myDestinationInstanceConnectionString,$myFileRepositoryUncPath,$myLimitMsdbScanToRecentHours,$myRestoreFilesToIndividualFolders,$myDestinationRestoreMode,$myLogWriter)
-    Write-Verbose 'New-DatabaseShipping Created'
+    Write-Verbose "New-DatabaseShipping Created"
 }
 #endregion
 
