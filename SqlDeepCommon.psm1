@@ -1,5 +1,5 @@
 #region Functions
-    function Clear-FolderPath { #Remove latest \ char from folder path
+    function Clear-FolderPath { #Remove latest '\' char from folder path
         [OutputType([string])]
         param (
             [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input folder path to evaluate")][AllowEmptyString()][AllowNull()][string]$FolderPath
