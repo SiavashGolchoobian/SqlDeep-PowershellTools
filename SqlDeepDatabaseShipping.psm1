@@ -120,7 +120,7 @@ Class DatabaseShipping {
         }
         [string]$myAnswer=$null
         $FolderPath=$FolderPath.Trim()
-        if ($FolderPath.ToCharArray()[-1] -eq '\') {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length)}    
+        if ($FolderPath.ToCharArray()[-1] -eq '\') {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length-1)}    
         $myAnswer=$FolderPath
         return $myAnswer
     }
