@@ -1533,7 +1533,7 @@ Class DatabaseShipping {
 
             #--=======================Remove copied files
             $this.LogWriter.Write($this.LogStaticMessage+'Remove copied files.',[LogType]::INF)
-            $myBackupFileList | ForEach-Object{Remove-Item -Path ($_.RemoteRepositoryUncFilePath); $this.LogWriter.Write($this.LogStaticMessage+('Remove file ' + $_.RemoteRepositoryUncFilePath),[LogType]::INF)}
+            $myBackupFileList | Select-Object -Unique -Property RemoteRepositoryUncFilePath | ForEach-Object{Remove-Item -Path ($_.RemoteRepositoryUncFilePath); $this.LogWriter.Write($this.LogStaticMessage+('Remove file ' + $_.RemoteRepositoryUncFilePath),[LogType]::INF)}
 
             #--=======================SetDestinationDBMode
             $this.LogWriter.Write($this.LogStaticMessage+('Set destination database mode to ' + $this.DestinationRestoreMode),[LogType]::INF)
