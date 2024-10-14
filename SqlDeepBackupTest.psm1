@@ -49,6 +49,7 @@ BackupTest([string]$BackupTestCatalogTableName) : base() {
 hidden Init ([string]$BackupTestCatalogTableName)
 {  
     $this.LimitMsdbScanToRecentHours=24;
+    $this.BackupTestCatalogTableName=$BackupTestCatalogTableName
     if($null -eq $this.BackupTestCatalogTableName -or $this.BackupTestCatalogTableName.Trim().Length -eq 0){$this.BackupTestCatalogTableName='BackupTest'}
 }
 
