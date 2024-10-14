@@ -308,13 +308,16 @@ hidden Init ([string]$BackupTestCatalogTableName)
         Write-Host $mySourceInstanceName,$this.RestoreTo.DateTime,$DatabaseName
         if($this.IsTested($mySourceInstanceName,($this.RestoreTo.DateTime),$DatabaseName) -eq $false){
 
-            if ($myDestinationInstanceName -ne $mySourceInstanceName) { #Do not restore any database when Source instance is equal to Destination instance (Because of operational database replacement)
+##            if ($myDestinationInstanceName -ne $mySourceInstanceName) { #Do not restore any database when Source instance is equal to Destination instance (Because of operational database replacement)
                 try { #Restore database to destination
                     $this.LogWriter.Write($this.LogStaticMessage+('restored database with name:' + $myDestinationDatabaseName),[LogType]::INF);
                     $this.DestinationRestoreMode=[DatabaseRecoveryMode]::RECOVERY
                     $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
                     $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
                     $myTestResult = [TestResult]::RestoreSuccseed
+                    Write-Host "Step1"
+                    [DateTime]$myStartBackupDate = ($this.BackupFileList | Where-Object -Property DatabaseName -EQ $DatabaseName | Sort-Object -Property BackupStartTime |Select-Object -Property BackupStartTime -First 1).BackupStartTime
+                    Write-Host $myStartBackupDate
                     $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime))
 
                 }
@@ -341,9 +344,9 @@ hidden Init ([string]$BackupTestCatalogTableName)
                 catch {
                     $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
                 }
-            } else {
-                $this.LogWriter.Write($this.LogStaticMessage+('Destination instance is same as Source instance.'),[LogType]::ERR); 
-            }
+    ##        } else {
+     ##           $this.LogWriter.Write($this.LogStaticMessage+('Destination instance is same as Source instance.'),[LogType]::ERR); 
+      ##      }
         }        
 
     }
