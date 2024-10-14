@@ -1,4 +1,17 @@
 #region Functions
+    function Clear-FolderPath { #Remove latest \ char from folder path
+        [OutputType([string])]
+        param (
+            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input folder path to evaluate")][AllowEmptyString()][AllowNull()][string]$FolderPath
+        )
+        begin{}
+        process{
+            $FolderPath=$FolderPath.Trim()
+            if ($FolderPath.ToCharArray()[-1] -eq '\') {$FolderPath=$FolderPath.Substring(0,$FolderPath.Length-1)}    
+            return $FolderPath
+        }
+        end{}    
+    }
     function IsNumeric {  #Check if input value is numeric
         [OutputType([bool])]
         param (
@@ -585,5 +598,5 @@
 #endregion
 
 #region Export
-    Export-ModuleMember -Function IsNumeric,Clear-Text,Clear-SqlParameter,Export-DatabaseBlob,Read-SqlQuery,Invoke-SqlCommand,Test-DatabaseConnection,Test-InstanceConnection,Get-InstanceInformation ,Get-InfoFromSqlRegisteredServers,Get-DatabaseList
+    Export-ModuleMember -Function IsNumeric,Clear-FolderPath,Clear-Text,Clear-SqlParameter,Export-DatabaseBlob,Read-SqlQuery,Invoke-SqlCommand,Test-DatabaseConnection,Test-InstanceConnection,Get-InstanceInformation,Get-InfoFromSqlRegisteredServers,Get-DatabaseList
 #endregion
