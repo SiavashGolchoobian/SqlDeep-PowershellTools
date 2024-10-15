@@ -82,7 +82,7 @@ Class DatabaseShipping {
     [string]$SourceInstanceConnectionString
     [string]$DestinationInstanceConnectionString
     [string]$FileRepositoryUncPath
-    [int]$LimitMsdbScanToRecentHours=31*24
+    [int]$LimitMsdbScanToRecentHours=(31*24)
     [string]$DataFolderRestoreLoation='DEFAULT'
     [string]$LogFolderRestoreLoation='DEFAULT'
     [bool]$RestoreFilesToIndividualFolders=$true
@@ -1578,7 +1578,7 @@ Function New-DatabaseShipping {
         [Parameter(Mandatory=$true)][string]$SourceInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$DestinationInstanceConnectionString,
         [Parameter(Mandatory=$true)][string]$FileRepositoryUncPath,
-        [Parameter(Mandatory=$false)][int]$LimitMsdbScanToRecentHours=31*24,
+        [Parameter(Mandatory=$false)][int]$LimitMsdbScanToRecentHours=(31*24),
         [Parameter(Mandatory=$false)][switch]$RestoreFilesToIndividualFolders,
         [Parameter(Mandatory=$false)][DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY,
         [Parameter(Mandatory=$true)][LogWriter]$LogWriter

@@ -87,6 +87,7 @@ function Export-DatabaseDacPac {
         [bool]$myAnswer=$false;
         try
         {
+            if (Test-Path -Path $DacpacFilePath) {Remove-Item -Path $DacpacFilePath -Force}
             $null=SqlPackage /Action:Extract /OverwriteFiles:true /SourceConnectionString:$ConnectionString /TargetFile:$DacpacFilePath;
             if (Test-Path -Path $DacpacFilePath) {$myAnswer=$true}
             return $myAnswer
@@ -144,8 +145,9 @@ function Get-DacPacDeltaScript {
         try
         {
             if ((Test-Path -Path $RefrenceDacpacFilePath) -and (Test-Path -Path $TargetDacpacFilePath)) {
+                if (Test-Path -Path $DeltaScriptFilePath) {Remove-Item -Path $DeltaScriptFilePath -Force}
                 $null=SqlPackage /Action:Script /OverwriteFiles:true /SourceFile:$RefrenceDacpacFilePath /TargetFile:$TargetDacpacFilePath /TargetDatabaseName:$DatabaseName /OutputPath:$DeltaScriptFilePath /Properties:DropObjectsNotInSource=True;
-                $myAnswer=$true
+                if (Test-Path -Path $DeltaScriptFilePath) {$myAnswer=$true}
             }
             return $myAnswer
         }
