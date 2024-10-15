@@ -29,12 +29,16 @@ $myDatabaseTest.TestAllDatabases($ExcludedDatabaseList)
 $SourceInstanceConnectionString = "Data Source=MachinName.Domainname\InstanceName,PortNo;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" 
 
 #Sample 3 :
-$myDatabaseTest=New-DatabaseTest -SourceInstanceConnectionString "Data Source=MachinName.Domainname\InstanceName,PortNo;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-BK-DBV02.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogWrite $myLogWriter -BackupTestCatalogTableName "myTestTable"
+$myDatabaseTest=New-DatabaseTest -SourceInstanceConnectionString "Data Source=DB-MN-DLV02.SAIPACORP.COM\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-BK-DBV02.SAIPACORP.COM\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogWrite $myLogWriter -BackupTestCatalogTableName "BackupTestResult" -FileRepositoryUncPath "\\DB-BK-DBV02\U$\Databases\Backup"
 
-[string[]]$ExcludedDatabaseList = "sqldeep","DWDiagnostics","SSISDB"
-[string[]]$ExcludedInstanceList = "MachinName.Domainname\InstanceName,PortNo","MachinName.Domainname\InstanceName,PortNo"
-
-$myDatabaseTest.TestFromRegisterServer($ExcludedInstanceList,$ExcludedDatabaseList)
+[string[]]$ExcludedDatabaseList = "TBSFileServerDB","SSISDB","SqlDeep","DWQueue","DWDiagnostics","DWConfiguration","WSS_Content_archive_engineering","WSS_Content_archive_Personneli","WSS_Content_archive_saipagroup_net","WSS_Content_dealernews","WSS_Content_DMS","TBSFileServerDB"
+[string[]]$ExcludedInstanceList = "DB-TEST-DTV04..Domainname\NODE,49149"
+[string]$myFilter = "SQL 2019"
+$myDatabaseTest.SkipBackupFilesExistenceCheck=$true
+$myDatabaseTest.LimitMsdbScanToRecentHours=24
+#$myDatabaseTest.RestoreTo=[datetime]"10/12/2024 17:33:05"
+$myDatabaseTest.TestFromRegisterServer($ExcludedInstanceList,$ExcludedDatabaseList,$myFilter)
 
 #>
+
 
