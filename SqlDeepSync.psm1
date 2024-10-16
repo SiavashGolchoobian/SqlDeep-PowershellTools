@@ -74,7 +74,7 @@ function Find-SqlPackageLocation {
         catch {
             Write-Error 'Find-SqlPackageLocations failed with error: ' + $_.ToString();
         }
-        
+
         if ($myAnswer) {
             $mySqlPackageFilePath=$myAnswer
             $mySqlPackageFolderPath=(Get-Item -Path $mySqlPackageFilePath).DirectoryName
@@ -229,16 +229,6 @@ function Publish-DacPacDeltaScript {
         return $myAnswer;
     }
     end {}
-}
-
-function Locate-SqlPackage {
-    [string]$mySqlPackageFilePath=$null
-    [string]$mySqlPackageFolderPath=$null
-
-    $mySqlPackageFilePath=Find-SqlPackageLocation
-    $mySqlPackageFolderPath=(Get-Item -Path $mySqlPackageFilePath).DirectoryName
-    $mySqlPackageFolderPath=Clear-FolderPath -FolderPath $mySqlPackageFolderPath
-    if (-not ($env:Path).Contains($mySqlPackageFolderPath)) {$env:path = $env:path + ';'+$mySqlPackageFolderPath+';'}
 }
 <#
 Refrences:
