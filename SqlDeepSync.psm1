@@ -32,6 +32,8 @@ function Find-SqlPackageLocation {
     param()
     begin {
         [string]$myExeName = "SqlPackage.exe";
+        [string]$mySqlPackageFilePath=$null;
+        [string]$mySqlPackageFolderPath=$null;
     }
     process{
         [string]$myAnswer=$null
@@ -72,9 +74,17 @@ function Find-SqlPackageLocation {
         catch {
             Write-Error 'Find-SqlPackageLocations failed with error: ' + $_.ToString();
         }
+        
+        if ($myAnswer) {
+            $mySqlPackageFilePath=$myAnswer
+            $mySqlPackageFolderPath=(Get-Item -Path $mySqlPackageFilePath).DirectoryName
+            $mySqlPackageFolderPath=Clear-FolderPath -FolderPath $mySqlPackageFolderPath
+            if (-not ($env:Path).Contains($mySqlPackageFolderPath)) {$env:path = $env:path + ';'+$mySqlPackageFolderPath+';'}
+        }
         return $myAnswer
     }
-    end {}
+    end {
+    }
 }
 function Export-DatabaseDacPac {
     [OutputType([bool])]
@@ -88,7 +98,7 @@ function Export-DatabaseDacPac {
         try
         {
             if (Test-Path -Path $DacpacFilePath) {Remove-Item -Path $DacpacFilePath -Force}
-            $null=SqlPackage /Action:Extract /OverwriteFiles:true /SourceConnectionString:$ConnectionString /TargetFile:$DacpacFilePath;
+            $null=SqlPackage /Action:Extract /OverwriteFiles:true /SourceConnectionString:$ConnectionString /TargetFile:$DacpacFilePath /Properties:IgnorePermissions=False /Properties:ExtractAllTableData=True;
             if (Test-Path -Path $DacpacFilePath) {$myAnswer=$true}
             return $myAnswer
         }
@@ -105,8 +115,8 @@ function Export-DatabaseDacPac {
 function Publish-DatabaseDacPac {
     [OutputType([bool])]
     param (
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Target database connection string")][ValidateNotNullOrEmpty()][string]$ConnectionString,
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage=".dapac file path to import")][ValidateNotNullOrEmpty()][string]$DacpacFilePath
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage=".dapac file path to import")][ValidateNotNullOrEmpty()][string]$DacpacFilePath,
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Target database connection string")][ValidateNotNullOrEmpty()][string]$ConnectionString
     )
     begin {}
     process {
@@ -114,7 +124,7 @@ function Publish-DatabaseDacPac {
         try
         {
             if (Test-Path -Path $DacpacFilePath) {
-                $null=SqlPackage /Action:Publish /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Properties:VerifyDeployment=False /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropObjectsNotInSource=True /Properties:IgnoreExtendedProperties=True /Properties:BackupDatabaseBeforeChanges=True;
+                $null=SqlPackage /Action:Publish /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Properties:VerifyDeployment=False /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropObjectsNotInSource=True /Properties:IgnoreExtendedProperties=True /Properties:BackupDatabaseBeforeChanges=True /Properties:IgnoreFillFactor=False /Properties:IgnoreIndexPadding=False /Properties:IgnoreObjectPlacementOnPartitionScheme=False /Properties:IgnoreSemicolonBetweenStatements=False;
                 $myAnswer=$true
             }
             return $myAnswer
@@ -131,11 +141,20 @@ function Publish-DatabaseDacPac {
 }
 function Get-DacPacDeltaScript {
     [OutputType([bool])]
+    [CmdletBinding(DefaultParameterSetName = 'dac_dac')]
     param (
-        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Refrence database connection string")][ValidateNotNullOrEmpty()][string]$RefrenceDatabaseConnectionString,    
-        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Refrence .dapac file path")][ValidateNotNullOrEmpty()][string]$RefrenceDacpacFilePath,
-        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Target of update database connection string")][ValidateNotNullOrEmpty()][string]$TargetDatabaseConnectionString,
-        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="A .dapac file path use as target of update")][ValidateNotNullOrEmpty()][string]$TargetDacpacFilePath,
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName = 'cstr_cstr',HelpMessage="Refrence database connection string")][ValidateNotNullOrEmpty()]
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName = 'cstr_dac',HelpMessage="Refrence database connection string")][ValidateNotNullOrEmpty()]
+            [string]$RefrenceDatabaseConnectionString, 
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName = 'dac_cstr',HelpMessage="Refrence .dapac file path")][ValidateNotNullOrEmpty()]
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName = 'dac_dac',HelpMessage="Refrence .dapac file path")][ValidateNotNullOrEmpty()]
+            [string]$RefrenceDacpacFilePath,
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName = 'cstr_cstr',HelpMessage="Target of update database connection string")][ValidateNotNullOrEmpty()]
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName = 'dac_cstr',HelpMessage="Target of update database connection string")][ValidateNotNullOrEmpty()]
+            [string]$TargetDatabaseConnectionString,
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName = 'cstr_dac',HelpMessage="A .dapac file path use as target of update")][ValidateNotNullOrEmpty()]
+        [Parameter(Mandatory=$false,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,ParameterSetName = 'dac_dac',HelpMessage="A .dapac file path use as target of update")][ValidateNotNullOrEmpty()]
+            [string]$TargetDacpacFilePath,
         [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Delta script file path")][ValidateNotNullOrEmpty()][string]$DeltaScriptFilePath,
         [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Target database name")][ValidateNotNullOrEmpty()][string]$DatabaseName
     )
@@ -144,10 +163,33 @@ function Get-DacPacDeltaScript {
         [bool]$myAnswer=$false;
         try
         {
-            if ((Test-Path -Path $RefrenceDacpacFilePath) -and (Test-Path -Path $TargetDacpacFilePath)) {
-                if (Test-Path -Path $DeltaScriptFilePath) {Remove-Item -Path $DeltaScriptFilePath -Force}
-                $null=SqlPackage /Action:Script /OverwriteFiles:true /SourceFile:$RefrenceDacpacFilePath /TargetFile:$TargetDacpacFilePath /TargetDatabaseName:$DatabaseName /OutputPath:$DeltaScriptFilePath /Properties:DropObjectsNotInSource=True;
-                if (Test-Path -Path $DeltaScriptFilePath) {$myAnswer=$true}
+            switch ($PSCmdlet.ParameterSetName) {
+                'dac_dac' {
+                    if ((Test-Path -Path $RefrenceDacpacFilePath) -and (Test-Path -Path $TargetDacpacFilePath)) {
+                        if (Test-Path -Path $DeltaScriptFilePath) {Remove-Item -Path $DeltaScriptFilePath -Force}
+                        $null=SqlPackage /Action:Script /OverwriteFiles:true /SourceFile:$RefrenceDacpacFilePath /TargetFile:$TargetDacpacFilePath /TargetDatabaseName:$DatabaseName /OutputPath:$DeltaScriptFilePath /Properties:DropObjectsNotInSource=True;
+                        if (Test-Path -Path $DeltaScriptFilePath) {$myAnswer=$true}
+                    }
+                }
+                'dac_cstr'{
+                    if (Test-Path -Path $RefrenceDacpacFilePath) {
+                        if (Test-Path -Path $DeltaScriptFilePath) {Remove-Item -Path $DeltaScriptFilePath -Force}
+                        $null=SqlPackage /Action:Script /OverwriteFiles:true /SourceFile:$RefrenceDacpacFilePath /TargetConnectionString:$TargetDatabaseConnectionString /TargetDatabaseName:$DatabaseName /OutputPath:$DeltaScriptFilePath /Properties:DropObjectsNotInSource=True;
+                        if (Test-Path -Path $DeltaScriptFilePath) {$myAnswer=$true}
+                    }
+                }
+                'cstr_dac'{
+                    if (Test-Path -Path $TargetDacpacFilePath) {
+                        if (Test-Path -Path $DeltaScriptFilePath) {Remove-Item -Path $DeltaScriptFilePath -Force}
+                        $null=SqlPackage /Action:Script /OverwriteFiles:true /SourceConnectionString:$RefrenceDatabaseConnectionString /TargetFile:$TargetDacpacFilePath /TargetDatabaseName:$DatabaseName /OutputPath:$DeltaScriptFilePath /Properties:DropObjectsNotInSource=True;
+                        if (Test-Path -Path $DeltaScriptFilePath) {$myAnswer=$true}
+                    }
+                }
+                'cstr_cstr'{
+                        if (Test-Path -Path $DeltaScriptFilePath) {Remove-Item -Path $DeltaScriptFilePath -Force}
+                        $null=SqlPackage /Action:Script /OverwriteFiles:true /SourceConnectionString:$RefrenceDatabaseConnectionString /TargetConnectionString:$TargetDatabaseConnectionString /TargetDatabaseName:$DatabaseName /OutputPath:$DeltaScriptFilePath /Properties:DropObjectsNotInSource=True;
+                        if (Test-Path -Path $DeltaScriptFilePath) {$myAnswer=$true}
+                }
             }
             return $myAnswer
         }
@@ -164,8 +206,8 @@ function Get-DacPacDeltaScript {
 function Publish-DacPacDeltaScript {
     [OutputType([bool])]
     param (
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Target of update database connection string")][ValidateNotNullOrEmpty()][string]$ConnectionString,
-        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Delta script file path")][ValidateNotNullOrEmpty()][string]$DeltaScriptFilePath
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Delta script file path")][ValidateNotNullOrEmpty()][string]$DeltaScriptFilePath,    
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Target of update database connection string")][ValidateNotNullOrEmpty()][string]$ConnectionString
     )
     begin {}
     process {
@@ -189,42 +231,24 @@ function Publish-DacPacDeltaScript {
     end {}
 }
 
-[string]$mySqlPackageFilePath=$null
-[string]$mySqlPackageFolderPath=$null
-[string]$myConnectionString=$null
-[string]$mySourceDacpacFilePath=$null
-[string]$myTargetDacpacFilePath=$null
-[string]$myDeltaFilePath=$null
-[bool]$mySourceIsExported=$false
-[bool]$myTargetIsExported=$false
-[bool]$myDeltaIsExported=$false
-[bool]$myPublishIsApplied=$false
+function Locate-SqlPackage {
+    [string]$mySqlPackageFilePath=$null
+    [string]$mySqlPackageFolderPath=$null
 
-#SqlPackage stanalone install package for all OS platforms:  https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-download?view=sql-server-ver16
-#https://www.mssqltips.com/sqlservertip/4759/sql-server-database-schema-synchronization-via-sqlpackageexe-and-powershell/
-#https://stackoverflow.com/questions/20673516/command-line-api-for-schema-compare-in-ssdt-sql-server-database-project
-
-#Add path for SQLPackage.exe to environment variables
-$mySqlPackageFilePath=Find-SqlPackageLocation
-$mySqlPackageFolderPath=(Get-Item -Path $mySqlPackageFilePath).DirectoryName
-$mySqlPackageFolderPath=Clear-FolderPath -FolderPath $mySqlPackageFolderPath
-if (-not ($env:Path).Contains($mySqlPackageFolderPath)) {$env:path = $env:path + ';'+$mySqlPackageFolderPath+';'}
-
-Write-Host "Phase 1: Export Source Database dacpac"
-$myConnectionString='Data Source=172.18.3.49,2019;Initial Catalog=SqlDeep;user=sa;password=Armin1355$;TrustServerCertificate=True;Encrypt=True'
-$mySourceDacpacFilePath='E:\log\SourceSqlDeep.dacpac'
-$mySourceIsExported=Export-DatabaseDacPac -ConnectionString $myConnectionString -DacpacFilePath $mySourceDacpacFilePath
-
-Write-Host "Phase 2: Export Target Database dacpac"
-$myConnectionString='Data Source=172.18.3.49,2022;Initial Catalog=SqlDeep;user=sa;password=Armin1355$;TrustServerCertificate=True;Encrypt=True'
-$myTargetDacpacFilePath='E:\log\TargetSqlDeep.dacpac'
-$myTargetIsExported=Export-DatabaseDacPac -ConnectionString $myConnectionString -DacpacFilePath $myTargetDacpacFilePath
-
-Write-Host "Phase 3: Generate Delta script"
-$myDeltaFilePath='E:\log\Delta.sql'
-$myDeltaIsExported=Get-DacPacDeltaScript -RefrenceDacpacFilePath $mySourceDacpacFilePath -TargetDacpacFilePath $myTargetDacpacFilePath -DeltaScriptFilePath $myDeltaFilePath -DatabaseName 'SqlDeep'
-
-Write-Host "Phase 4: Publish Source Database dacpac to Target Database"
-$myConnectionString='Data Source=172.18.3.49,2022;Initial Catalog=SqlDeep;user=sa;password=Armin1355$;TrustServerCertificate=True;Encrypt=True'
-$myPublishIsApplied=Publish-DatabaseDacPac -ConnectionString $myConnectionString -DacpacFilePath $mySourceDacpacFilePath
-#$myPublishIsApplied=Publish-DacPacDeltaScript -ConnectionString $myConnectionString -DeltaScriptFilePath $myDeltaFilePath
+    $mySqlPackageFilePath=Find-SqlPackageLocation
+    $mySqlPackageFolderPath=(Get-Item -Path $mySqlPackageFilePath).DirectoryName
+    $mySqlPackageFolderPath=Clear-FolderPath -FolderPath $mySqlPackageFolderPath
+    if (-not ($env:Path).Contains($mySqlPackageFolderPath)) {$env:path = $env:path + ';'+$mySqlPackageFolderPath+';'}
+}
+<#
+Refrences:
+    SqlPackage stanalone install package for all OS platforms:
+        https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-download?view=sql-server-ver16
+    SqlPackage parameters:
+        https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-export?view=sql-server-ver16
+        https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-extract?view=sql-server-ver16
+        https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-pipelines?view=sql-server-ver16
+    Helps:
+        https://www.mssqltips.com/sqlservertip/4759/sql-server-database-schema-synchronization-via-sqlpackageexe-and-powershell/
+        https://stackoverflow.com/questions/20673516/command-line-api-for-schema-compare-in-ssdt-sql-server-database-project
+#>
