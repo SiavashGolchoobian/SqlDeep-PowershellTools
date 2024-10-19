@@ -112,6 +112,34 @@ function Export-DatabaseDacPac {
     }
     end {}
 }
+function Get-PrePublishReport {
+    [OutputType([bool])]
+    param (
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage=".dapac file path to import")][ValidateNotNullOrEmpty()][string]$DacpacFilePath,
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Target database connection string")][ValidateNotNullOrEmpty()][string]$ConnectionString,
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Report file path to export")][ValidateNotNullOrEmpty()][string]$ReportFilePath
+    )
+    begin {}
+    process {
+        [bool]$myAnswer=$false;
+        try
+        {
+            if (Test-Path -Path $DacpacFilePath) {
+                $null=SqlPackage /Action:DeployReport /OutputPath:$ReportFilePath /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Properties:VerifyDeployment=True /Properties:BlockOnPossibleDataLoss=False /Properties:GenerateSmartDefaults=True /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropObjectsNotInSource=True /Properties:IgnoreExtendedProperties=True /Properties:BackupDatabaseBeforeChanges=True /Properties:IgnoreFillFactor=False /Properties:IgnoreIndexPadding=False /Properties:IgnoreObjectPlacementOnPartitionScheme=False /Properties:IgnoreSemicolonBetweenStatements=False /Properties:AllowIncompatiblePlatform=True /Properties:IgnoreFilegroupPlacement=False /Properties:IgnorePermissions=True /Properties:IgnoreRoleMembership=True /Properties:IncludeTransactionalScripts=True;
+                $myAnswer=$true
+            }
+            return $myAnswer
+        }
+        catch
+        {       
+            $myAnswer=$false;
+            Write-Error($_.ToString());
+            Throw;
+        }
+        return $myAnswer;
+    }
+    end {}
+}
 function Publish-DatabaseDacPac {
     [OutputType([bool])]
     param (
@@ -124,7 +152,7 @@ function Publish-DatabaseDacPac {
         try
         {
             if (Test-Path -Path $DacpacFilePath) {
-                $null=SqlPackage /Action:Publish /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Properties:VerifyDeployment=False /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropObjectsNotInSource=True /Properties:IgnoreExtendedProperties=True /Properties:BackupDatabaseBeforeChanges=True /Properties:IgnoreFillFactor=False /Properties:IgnoreIndexPadding=False /Properties:IgnoreObjectPlacementOnPartitionScheme=False /Properties:IgnoreSemicolonBetweenStatements=False;
+                $null=SqlPackage /Action:Publish /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Properties:VerifyDeployment=True /Properties:BlockOnPossibleDataLoss=False /Properties:GenerateSmartDefaults=True /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropObjectsNotInSource=True /Properties:IgnoreExtendedProperties=True /Properties:BackupDatabaseBeforeChanges=True /Properties:IgnoreFillFactor=False /Properties:IgnoreIndexPadding=False /Properties:IgnoreObjectPlacementOnPartitionScheme=False /Properties:IgnoreSemicolonBetweenStatements=False /Properties:AllowIncompatiblePlatform=True /Properties:IgnoreFilegroupPlacement=False /Properties:IgnorePermissions=True /Properties:IgnoreRoleMembership=True /Properties:IncludeTransactionalScripts=True;
                 $myAnswer=$true
             }
             return $myAnswer
