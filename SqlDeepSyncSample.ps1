@@ -5,6 +5,7 @@ Using module .\SqlDeepSync.psm1
 [string]$mySourceDacpacFilePath=$null
 [string]$myTargetDacpacFilePath=$null
 [string]$myDeltaFilePath=$null
+[string]$myReportFilePath=$null
 
 $mySourceConnectionString='Data Source=172.18.3.49,2022;Initial Catalog=SqlDeep;user=sa;password=Armin1355$;TrustServerCertificate=True;Encrypt=True'
 $mySourceDacpacFilePath='E:\log\SourceSqlDeep.dacpac'
