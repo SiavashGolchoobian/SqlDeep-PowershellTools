@@ -214,10 +214,10 @@ hidden Init ([string]$BackupTestCatalogTableName)
         [string]$myCommand=
         "
         DECLARE @myDatabaseName sysname
-        SET @myDatabaseName = '" + $DatabaseName + "'
+        SET @myDatabaseName = N'" + $DatabaseName + "'
         IF EXISTS (SELECT 1 FROM sys.databases WHERE [name] = @myDatabaseName)
             BEGIN
-                DROP DATABASE " + $DatabaseName + "
+                DROP DATABASE [" + $DatabaseName + "]
             END
         "
         try{
