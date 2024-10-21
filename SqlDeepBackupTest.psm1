@@ -170,8 +170,8 @@ hidden Init ([string]$BackupTestCatalogTableName)
     hidden [bool] TestDatabaseIntegrity([string]$DestinationDatabaseName) {
         [bool]$myResult = $false
         $myCommand = "
-        DECLARE @myDBName AS NVARCHAR(100)
-        SET @myDBName = CAST('"+$DestinationDatabaseName+"' AS NVARCHAR(100));
+        DECLARE @myDBName AS sysname
+        SET @myDBName = CAST(N'"+$DestinationDatabaseName+"' AS sysname);
         
         DBCC CHECKDB (@myDBName) WITH NO_INFOMSGS;
         "
