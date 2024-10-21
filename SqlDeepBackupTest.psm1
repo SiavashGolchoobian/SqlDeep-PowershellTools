@@ -111,7 +111,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
             [TestResultDescription] [NCHAR](50) NULL,
             [HashValue]  AS (BINARY_CHECKSUM([InstanceName],[DatabaseName])),
             [FinishTime] [DATETIME] NULL,
-         CONSTRAINT [PK_dbo."+$this.BackupTestCatalogTableName+"] PRIMARY KEY CLUSTERED 
+         CONSTRAINT [PK_dbo_"+$this.BackupTestCatalogTableName+"] PRIMARY KEY CLUSTERED 
         (
             [Id] ASC
         )WITH (PAD_INDEX = ON, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, FILLFACTOR = 100, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
@@ -244,6 +244,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
     }
     [void] TestDatabase([string]$DatabaseName){
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$DatabaseName)
         #Set Constr
         [int]$myExecutionId=1;
         [string]$myDestinationDatabaseName=$null;
