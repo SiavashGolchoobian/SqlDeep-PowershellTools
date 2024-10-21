@@ -111,7 +111,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
             [TestResultDescription] [NCHAR](50) NULL,
             [HashValue]  AS (BINARY_CHECKSUM([InstanceName],[DatabaseName])),
             [FinishTime] [DATETIME] NULL,
-         CONSTRAINT [PK_dbo."+$this.BackupTestCatalogTableName+"] PRIMARY KEY CLUSTERED 
+         CONSTRAINT [PK_dbo_"+$this.BackupTestCatalogTableName+"] PRIMARY KEY CLUSTERED 
         (
             [Id] ASC
         )WITH (PAD_INDEX = ON, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, FILLFACTOR = 100, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
@@ -170,8 +170,8 @@ hidden Init ([string]$BackupTestCatalogTableName)
     hidden [bool] TestDatabaseIntegrity([string]$DestinationDatabaseName) {
         [bool]$myResult = $false
         $myCommand = "
-        DECLARE @myDBName AS NVARCHAR(100)
-        SET @myDBName = CAST('"+$DestinationDatabaseName+"' AS NVARCHAR(100));
+        DECLARE @myDBName AS sysname
+        SET @myDBName = CAST(N'"+$DestinationDatabaseName+"' AS sysname);
         
         DBCC CHECKDB (@myDBName) WITH NO_INFOMSGS;
         "
@@ -199,7 +199,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
         SET @myRecoveryDateTime = CAST('" + ($RecoveryDateTime.ToString()) + "' AS DATETIME)
         SET @myBackupStartTime = " + $myBackupStartDateCommand + "
   
-        INSERT INTO[dbo].["+$this.BackupTestCatalogTableName+"] ([InstanceName], [DatabaseName], [TestResult], [TestResultDescription], [BackupRestoredTime],[BackupStartTime])
+        INSERT INTO [dbo].["+$this.BackupTestCatalogTableName+"] ([InstanceName], [DatabaseName], [TestResult], [TestResultDescription], [BackupRestoredTime],[BackupStartTime])
         VALUES (N'"+ $mySourceInstanceName +"', N'"+ $DatabaseName +"', "+($TestResult.value__).ToString() +", N'"+ $TestResult +"', @myRecoveryDateTime ,@myBackupStartTime)
         "
         try{
@@ -214,10 +214,10 @@ hidden Init ([string]$BackupTestCatalogTableName)
         [string]$myCommand=
         "
         DECLARE @myDatabaseName sysname
-        SET @myDatabaseName = '" + $DatabaseName + "'
+        SET @myDatabaseName = N'" + $DatabaseName + "'
         IF EXISTS (SELECT 1 FROM sys.databases WHERE [name] = @myDatabaseName)
             BEGIN
-                DROP DATABASE " + $DatabaseName + "
+                DROP DATABASE [" + $DatabaseName + "]
             END
         "
         try{
@@ -244,6 +244,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
     }
     [void] TestDatabase([string]$DatabaseName){
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$DatabaseName)
         #Set Constr
         [int]$myExecutionId=1;
         [string]$myDestinationDatabaseName=$null;
