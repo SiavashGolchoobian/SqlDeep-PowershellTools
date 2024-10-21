@@ -492,10 +492,10 @@
             }
     
             $myExludedString=Clear-SqlParameter -ParameterValue $myExludedString -RemoveWildcard -RemoveDoubleQuote -RemoveDollerSign -RemoveBraces
-            $FilterGroup=Clear-SqlParameter -ParameterValue $FilterGroup -RemoveWildcard -RemoveDoubleQuote -RemoveDollerSign
+            $FilterGroup=Clear-SqlParameter -ParameterValue $FilterGroup -RemoveDoubleQuote -RemoveDollerSign
     
             if($null -eq $myExludedString) {$myExludedString=''}
-            if($null -ne $FilterGroup -and  $FilterGroup.Trim() -ne '') {$myWhereCondition="AND myGroups.name = '"+$FilterGroup+"'"}
+            if($null -ne $FilterGroup -and  $FilterGroup.Trim() -ne '') {$myWhereCondition="AND myGroups.name LIKE '"+$FilterGroup+"'"}
         }
         process {
             $myMonitoringInstancInfo=Get-InstanceInformation -ConnectionString $MonitoringConnectionString -ShowRelatedInstanceOnly
@@ -512,7 +512,7 @@
                 WHERE
                     myServer.server_name NOT IN('"+$myMonitoringInstanceName+"'"+$myExludedString+")
                     " + $myWhereCondition
-            
+
             try {
                 [System.Collections.ArrayList]$myServerCollection=$null;
                 $myServerCollection=[System.Collections.ArrayList]::new();
