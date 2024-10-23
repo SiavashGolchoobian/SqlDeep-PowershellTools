@@ -244,130 +244,138 @@ hidden Init ([string]$BackupTestCatalogTableName)
     }
     [void] TestDatabase([string]$DatabaseName){
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
-        $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$DatabaseName)
         #Set Constr
         [int]$myExecutionId=1;
         [string]$myDestinationDatabaseName=$null;
         [int]$myOriginalLimitMsdbScanToRecentHours=0;
+        [string]$myOriginalLogFilePath=$null;
         [bool]$myIsDatabaseRestored=$false;
         [nullable[DateTime]]$myBackupStartDate=$null
 
-        $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
-        $myExecutionId=Get-Random -Minimum 1 -Maximum 1000
-        $myDestinationDatabaseName=$DatabaseName+$myExecutionId
-        
-        #Determine candidate server(s)
-        $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name: '+$this.SourceInstanceConnectionString,[LogType]::INF)
-        $mySourceInstanceInfo=Get-InstanceInformation -ConnectionString $this.SourceInstanceConnectionString -ShowRelatedInstanceOnly
-        if ($mySourceInstanceInfo.PsObject.Properties.Name -eq 'MachineName') {  
-            $mySourceServerName=$mySourceInstanceInfo.MachineName
-            $mySourceInstanceName=$mySourceInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
-            $this.LogWriter.Write($this.LogStaticMessage+'Source server name is ' + $mySourceServerName + ' and Instance name is ' + $mySourceInstanceName,[LogType]::INF)
-        } else {
-            $this.LogWriter.Write($this.LogStaticMessage+'Get-InstanceInformation failure.', [LogType]::ERR) 
-            throw ('Get-InstanceInformation failure.')
-        }
-        if ($null -eq $mySourceServerName -or $mySourceServerName.Length -eq 0) {
-            $this.LogWriter.Write($this.LogStaticMessage+'Source server name is empty.',[LogType]::ERR)
-            throw 'Source server name is empty.'
-        }
+        try{
+            $myOriginalLogFilePath=$this.LogWriter.LogFilePath
+            $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$DatabaseName)
+            $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+            $myExecutionId=Get-Random -Minimum 1 -Maximum 1000
+            $myDestinationDatabaseName=$DatabaseName+$myExecutionId
+            
+            #Determine candidate server(s)
+            $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name: '+$this.SourceInstanceConnectionString,[LogType]::INF)
+            $mySourceInstanceInfo=Get-InstanceInformation -ConnectionString $this.SourceInstanceConnectionString -ShowRelatedInstanceOnly
+            if ($mySourceInstanceInfo.PsObject.Properties.Name -eq 'MachineName') {  
+                $mySourceServerName=$mySourceInstanceInfo.MachineName
+                $mySourceInstanceName=$mySourceInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
+                $this.LogWriter.Write($this.LogStaticMessage+'Source server name is ' + $mySourceServerName + ' and Instance name is ' + $mySourceInstanceName,[LogType]::INF)
+            } else {
+                $this.LogWriter.Write($this.LogStaticMessage+'Get-InstanceInformation failure.', [LogType]::ERR) 
+                throw ('Get-InstanceInformation failure.')
+            }
+            if ($null -eq $mySourceServerName -or $mySourceServerName.Length -eq 0) {
+                $this.LogWriter.Write($this.LogStaticMessage+'Source server name is empty.',[LogType]::ERR)
+                throw 'Source server name is empty.'
+            }
 
-        #Determine restoresd server
+            #Determine restoresd server
 
-        $this.LogWriter.Write($this.LogStaticMessage+'Get Destination instance server name: ' + $this.DestinationInstanceConnectionString,[LogType]::INF)
-        $myDestinationInstanceInfo=Get-InstanceInformation -ConnectionString $this.DestinationInstanceConnectionString -ShowRelatedInstanceOnly
-        $myDestinationInstanceName=$myDestinationInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
+            $this.LogWriter.Write($this.LogStaticMessage+'Get Destination instance server name: ' + $this.DestinationInstanceConnectionString,[LogType]::INF)
+            $myDestinationInstanceInfo=Get-InstanceInformation -ConnectionString $this.DestinationInstanceConnectionString -ShowRelatedInstanceOnly
+            $myDestinationInstanceName=$myDestinationInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
 
-        #Initial Log Modules
-        Write-Verbose ('===== Testbackup database  ' + $DatabaseName + ' on ' + $mySourceInstanceName + ' started. =====')
-        $this.LogStaticMessage= '{"SourceDB":"' + $DatabaseName+ '","SourceInstance":"' + $mySourceInstanceName+'"} : '
-       # $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$myDestinationDatabaseName)
-        $this.LogWriter.Reinitialize()
-        $this.LogWriter.Write($this.LogStaticMessage+'===== BackupTest process started... ===== ', [LogType]::INF) 
-        $this.LogWriter.Write($this.LogStaticMessage+('TestDatabase ' + $DatabaseName + ' on ' + $mySourceInstanceName), [LogType]::INF) 
-        $this.LogWriter.Write($this.LogStaticMessage+'Initializing EventsTable.Create.', [LogType]::INF) 
-       # $this.RestoreTo=Clear-SqlParameter -ParameterValue $this.RestoreTo -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
-        if($null -eq $this.RestoreTo)
-        {
-            $this.RestoreTo=$this.GenerateRandomDate($this.StartDate,$this.EndDate)
-            $this.LogWriter.Write($this.LogStaticMessage+('RestoreTo is :' + $this.RestoreTo),[LogType]::INF);
-        }
-        
-        $myOriginalLimitMsdbScanToRecentHours=$this.LimitMsdbScanToRecentHours;
-        if ($this.RestoreTo -lt (Get-Date).AddHours(-1*$this.LimitMsdbScanToRecentHours)) {
-            $this.LimitMsdbScanToRecentHours= ((Get-Date)-($this.RestoreTo)).Hour;
-        }
-        #--=======================Check shipped files catalog table connectivity
-        $this.LogWriter.Write($this.LogStaticMessage+'Test catalog table connectivity.', [LogType]::INF) 
-        if ((Test-DatabaseConnection -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -DatabaseName 'master') -eq $false) {
-            $this.LogWriter.Write($this.LogStaticMessage+'Can not connect to sql instance on ' + $this.LogWriter.LogInstanceConnectionString, [LogType]::ERR) 
-            throw ($this.LogStaticMessage+'Can not connect to sql instance.')
-        }
-        $this.LogWriter.Write($this.LogStaticMessage+'Initializing  catalog table.', [LogType]::INF)
-        if ($this.CreateBackupTestCatalog() -eq $false)  {
-            $this.LogWriter.Write($this.LogStaticMessage+'Can not initialize table to save catalog on ' + $this.LogWriter.LogInstanceConnectionString + ' to ' + $this.BackupShippingCatalogTableName + ' table.', [LogType]::ERR) 
-            throw ($this.LogStaticMessage+' catalog initialization failed.')
-        }
-        #Has this database been tested on this date?
-        $this.LogWriter.Write($this.LogStaticMessage+('in time :' + $this.RestoreTo+'does not have any test record'),[LogType]::INF);
-        Write-Host $mySourceInstanceName,$this.RestoreTo.DateTime,$DatabaseName
-        if($this.IsTested($mySourceInstanceName,($this.RestoreTo.DateTime),$DatabaseName) -eq $false){
+            #Initial Log Modules
+            Write-Verbose ('===== Testbackup database  ' + $DatabaseName + ' on ' + $mySourceInstanceName + ' started. =====')
+            $this.LogStaticMessage= '{"SourceDB":"' + $DatabaseName+ '","SourceInstance":"' + $mySourceInstanceName+'"} : '
+        # $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$myDestinationDatabaseName)
+            $this.LogWriter.Reinitialize()
+            $this.LogWriter.Write($this.LogStaticMessage+'===== BackupTest process started... ===== ', [LogType]::INF) 
+            $this.LogWriter.Write($this.LogStaticMessage+('TestDatabase ' + $DatabaseName + ' on ' + $mySourceInstanceName), [LogType]::INF) 
+            $this.LogWriter.Write($this.LogStaticMessage+'Initializing EventsTable.Create.', [LogType]::INF) 
+        # $this.RestoreTo=Clear-SqlParameter -ParameterValue $this.RestoreTo -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+            if($null -eq $this.RestoreTo)
+            {
+                $this.RestoreTo=$this.GenerateRandomDate($this.StartDate,$this.EndDate)
+                $this.LogWriter.Write($this.LogStaticMessage+('RestoreTo is :' + $this.RestoreTo),[LogType]::INF);
+            }
+            
+            $myOriginalLimitMsdbScanToRecentHours=$this.LimitMsdbScanToRecentHours;
+            if ($this.RestoreTo -lt (Get-Date).AddHours(-1*$this.LimitMsdbScanToRecentHours)) {
+                $this.LimitMsdbScanToRecentHours= ((Get-Date)-($this.RestoreTo)).Hour;
+            }
+            #--=======================Check shipped files catalog table connectivity
+            $this.LogWriter.Write($this.LogStaticMessage+'Test catalog table connectivity.', [LogType]::INF) 
+            if ((Test-DatabaseConnection -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -DatabaseName 'master') -eq $false) {
+                $this.LogWriter.Write($this.LogStaticMessage+'Can not connect to sql instance on ' + $this.LogWriter.LogInstanceConnectionString, [LogType]::ERR) 
+                throw ($this.LogStaticMessage+'Can not connect to sql instance.')
+            }
+            $this.LogWriter.Write($this.LogStaticMessage+'Initializing  catalog table.', [LogType]::INF)
+            if ($this.CreateBackupTestCatalog() -eq $false)  {
+                $this.LogWriter.Write($this.LogStaticMessage+'Can not initialize table to save catalog on ' + $this.LogWriter.LogInstanceConnectionString + ' to ' + $this.BackupShippingCatalogTableName + ' table.', [LogType]::ERR) 
+                throw ($this.LogStaticMessage+' catalog initialization failed.')
+            }
+            #Has this database been tested on this date?
+            $this.LogWriter.Write($this.LogStaticMessage+('in time :' + $this.RestoreTo+'does not have any test record'),[LogType]::INF);
+            Write-Host $mySourceInstanceName,$this.RestoreTo.DateTime,$DatabaseName
+            if($this.IsTested($mySourceInstanceName,($this.RestoreTo.DateTime),$DatabaseName) -eq $false){
 
-            if ($myDestinationInstanceName -ne $mySourceInstanceName) { #Do not restore any database when Source instance is equal to Destination instance (Because of operational database replacement)
-                #Restore database to destination
-                try {
-                    $this.LogWriter.Write($this.LogStaticMessage+('restored database with name:' + $myDestinationDatabaseName),[LogType]::INF);
-                    $this.DestinationRestoreMode=[DatabaseRecoveryMode]::RECOVERY
-                    $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
-                    $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
-                    $myIsDatabaseRestored=Test-DatabaseConnection -ConnectionString $this.DestinationInstanceConnectionString -DatabaseName $myDestinationDatabaseName
-                    if ($myIsDatabaseRestored -eq $true) {
-                        $myTestResult = [TestResult]::RestoreSuccseed
-                        $myBackupStartDate = ($this.BackupFileList | Where-Object -Property DatabaseName -EQ $DatabaseName | Sort-Object -Property BackupStartTime |Select-Object -Property BackupStartTime -First 1).BackupStartTime
-                    } else {
-                        $this.LogWriter.Write($this.LogStaticMessage+('Failed to restore database ' + $myDestinationDatabaseName + ' to destination.'),[LogType]::ERR);
-                        $myTestResult = [TestResult]::RestoreFailed
-                    }
-                } catch {
-                    $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-                    $myIsDatabaseRestored=$false
-                    $myTestResult = [TestResult]::RestoreFailed
-                } finally {
-                    #Save Restore Result
-                    $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime),$myBackupStartDate)
-                }
-                
-                #Checkdb
-                if ($myTestResult -eq [TestResult]::RestoreSuccseed) {
+                if ($myDestinationInstanceName -ne $mySourceInstanceName) { #Do not restore any database when Source instance is equal to Destination instance (Because of operational database replacement)
+                    #Restore database to destination
                     try {
-                        $this.LogWriter.Write($this.LogStaticMessage+('checkdb on database:' + $myDestinationDatabaseName),[LogType]::INF); 
-                        $this.TestDatabaseIntegrity($myDestinationDatabaseName)
-                        $myTestResult = [TestResult]::CheckDbSuccseed
+                        $this.LogWriter.Write($this.LogStaticMessage+('restored database with name:' + $myDestinationDatabaseName),[LogType]::INF);
+                        $this.DestinationRestoreMode=[DatabaseRecoveryMode]::RECOVERY
+                        $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
+                        $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
+                        $myIsDatabaseRestored=Test-DatabaseConnection -ConnectionString $this.DestinationInstanceConnectionString -DatabaseName $myDestinationDatabaseName
+                        if ($myIsDatabaseRestored -eq $true) {
+                            $myTestResult = [TestResult]::RestoreSuccseed
+                            $myBackupStartDate = ($this.BackupFileList | Where-Object -Property DatabaseName -EQ $DatabaseName | Sort-Object -Property BackupStartTime |Select-Object -Property BackupStartTime -First 1).BackupStartTime
+                        } else {
+                            $this.LogWriter.Write($this.LogStaticMessage+('Failed to restore database ' + $myDestinationDatabaseName + ' to destination.'),[LogType]::ERR);
+                            $myTestResult = [TestResult]::RestoreFailed
+                        }
                     } catch {
                         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-                        $myTestResult = [TestResult]::CheckDbFailed
-                        
+                        $myIsDatabaseRestored=$false
+                        $myTestResult = [TestResult]::RestoreFailed
                     } finally {
+                        #Save Restore Result
                         $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime),$myBackupStartDate)
                     }
-                }
-                #Remove database
-                if ($myIsDatabaseRestored) {
-                    try {
-                        $this.LogWriter.Write($this.LogStaticMessage+('remove database:' + $myDestinationDatabaseName),[LogType]::INF); 
-                        $this.DropDatabase($myDestinationDatabaseName)
+                    
+                    #Checkdb
+                    if ($myTestResult -eq [TestResult]::RestoreSuccseed) {
+                        try {
+                            $this.LogWriter.Write($this.LogStaticMessage+('checkdb on database:' + $myDestinationDatabaseName),[LogType]::INF); 
+                            $this.TestDatabaseIntegrity($myDestinationDatabaseName)
+                            $myTestResult = [TestResult]::CheckDbSuccseed
+                        } catch {
+                            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                            $myTestResult = [TestResult]::CheckDbFailed
+                            
+                        } finally {
+                            $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime),$myBackupStartDate)
+                        }
                     }
-                    catch {
-                        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                    #Remove database
+                    if ($myIsDatabaseRestored) {
+                        try {
+                            $this.LogWriter.Write($this.LogStaticMessage+('remove database:' + $myDestinationDatabaseName),[LogType]::INF); 
+                            $this.DropDatabase($myDestinationDatabaseName)
+                        }
+                        catch {
+                            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+                        }
                     }
+                } else {
+                    $this.LogWriter.Write($this.LogStaticMessage+('Destination instance is same as Source instance.'),[LogType]::ERR); 
                 }
-            } else {
-                $this.LogWriter.Write($this.LogStaticMessage+('Destination instance is same as Source instance.'),[LogType]::ERR); 
             }
+        } catch {
+            Write-Error ($_.ToString())
+            $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+        } finally {
+            #Re-assign original value
+            $this.LimitMsdbScanToRecentHours=$myOriginalLimitMsdbScanToRecentHours;
+            $this.LogWriter.LogFilePath=$myOriginalLogFilePath;
         }
-        #Re-assign original value
-        $this.LimitMsdbScanToRecentHours=$myOriginalLimitMsdbScanToRecentHours;
-
     }
  
 #endregion
