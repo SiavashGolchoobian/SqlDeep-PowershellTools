@@ -211,6 +211,10 @@ Class DatabaseShipping {
     hidden [BackupFile[]]Database_GetBackupFileList([string]$ConnectionString,[string]$DatabaseName,[Decimal]$LatestLSN,[Decimal]$DiffBackupBaseLsn,[string]$KnownRecoveryFork) {    #Get List of backup files combination neede to restore
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         [BackupFile[]]$myAnswer=$null
+        
+        $this.LogWriter.Write($this.LogStaticMessage+'Generate random suffix name.',[LogType]::INF)
+        [string]$myExecutionId=$null;
+        $myExecutionId=(Get-Random -Minimum 1 -Maximum 1000).ToString()
 
         $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name.',[LogType]::INF)
         [string]$mySourceServerName=$null
@@ -245,7 +249,7 @@ Class DatabaseShipping {
         if ($this.SkipBackupFilesExistenceCheck){
             $myBackupFileExistenceCheckCommand='CAST(1 AS BIT) AS IsFilesExists'
         }else{
-            $myBackupFileExistenceCheckCommand="CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists"
+            $myBackupFileExistenceCheckCommand="CAST(MIN(CASE WHEN [tempdb].[dbo].[fn_FileExists"+$myExecutionId+"]([myBackupFamily].[physical_device_name])=1 THEN 1 ELSE 0 END) AS BIT) AS IsFilesExists"
         }
 
         # Generate RecoveryTime
@@ -309,11 +313,11 @@ Class DatabaseShipping {
 			) AS myPivot
 
         -------------------------------------------Create required functions in tempdb
-        IF NOT EXISTS (SELECT 1 FROM [tempdb].[sys].[all_objects] WHERE type='FN' AND name = 'fn_FileExists')
+        IF NOT EXISTS (SELECT 1 FROM [tempdb].[sys].[all_objects] WHERE type='FN' AND name = 'fn_FileExists"+$myExecutionId+"')
         BEGIN
             DECLARE @myStatement NVARCHAR(MAX);
             SET @myStatement = N'
-                CREATE FUNCTION dbo.fn_FileExists(@path varchar(512))
+                CREATE FUNCTION dbo.fn_FileExists"+$myExecutionId+"(@path varchar(512))
                 RETURNS BIT
                 AS
                 BEGIN
@@ -330,7 +334,7 @@ Class DatabaseShipping {
             MediaSetId INT,
             IsFilesExists BIT DEFAULT(1)
         );
-        CREATE UNIQUE CLUSTERED INDEX myFileExistCacheUNQ ON #myFileExistCache (MediaSetId) WITH (IGNORE_DUP_KEY=ON);
+        CREATE UNIQUE CLUSTERED INDEX myFileExistCacheUNQ"+$myExecutionId+" ON #myFileExistCache (MediaSetId) WITH (IGNORE_DUP_KEY=ON);
         CREATE TABLE #myResult
         (
             ID INT IDENTITY,
@@ -1083,7 +1087,7 @@ Class DatabaseShipping {
         DROP TABLE #myRoadMaps;
         DROP TABLE #myResult;
         DROP TABLE #myFileExistCache;
-        DROP FUNCTION dbo.fn_FileExists;   
+        DROP FUNCTION dbo.fn_FileExists"+$myExecutionId+";   
         "
         try{
             #$this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
