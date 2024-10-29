@@ -1,10 +1,11 @@
 #Create self-signed certificate, Encrypt file by Certificate Public Key, Decrypt file by Certificate Private Key, Export Public key for others
 #--------------------------------------------------------------Parameters.
 Param(
-    [Parameter(Mandatory=$true)][ValidateSet("Encrypt","Decrypt","CreateCert","ExportPublicKey")][string]$Action,
+    [Parameter(Mandatory=$true)][ValidateSet("Encrypt","Decrypt","CreateCert","ExportPublicKey","ExportPrivateAndPublicKey")][string]$Action,
 	[Parameter(Mandatory=$true)][string]$CertSubjectName,
     [Parameter(Mandatory=$false)][string]$InputFilePath,
-	[Parameter(Mandatory=$false)][string]$OutputFilePath
+	[Parameter(Mandatory=$false)][string]$OutputFilePath,
+    [Parameter(Mandatory=$false)][string]$PrivateKeyPassword
     )
 
     [string]$myTempInputFilePath
@@ -48,6 +49,15 @@ Param(
                 [X509Certificate] $myCert
                 $myCert=Get-Childitem -Path Cert:\CurrentUser\My -DocumentEncryptionCert | Where-Object -Property Subject -eq $myCertSubjectName
                 Export-Certificate -Cert $myCert -FilePath $OutputFilePath
+            } else {
+                Write-Host "OutputFilePath does not exist." -ForegroundColor Red
+            }
+        }
+        "EXPORTPRIVATEANDPUBLICKEY" {   #Export as pfx file
+            if (($OutputFilePath)) {
+                [X509Certificate] $myCert
+                $myCert=Get-Childitem -Path Cert:\CurrentUser\My -DocumentEncryptionCert | Where-Object -Property Subject -eq $myCertSubjectName
+                Export-PfxCertificate -Cert $myCert -FilePath $OutputFilePath -Password (ConvertTo-SecureString -AsPlainText $PrivateKeyPassword -Force)
             } else {
                 Write-Host "OutputFilePath does not exist." -ForegroundColor Red
             }

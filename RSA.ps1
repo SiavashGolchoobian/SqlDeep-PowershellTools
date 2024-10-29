@@ -21,3 +21,5 @@ $myRSA=[System.Security.Cryptography.RSA]::Create($KeySize)
 $myRSAFormatter=[System.Security.Cryptography.RSAPKCS1SignatureFormatter]::new($myRSA)
 $myRSAFormatter.SetHashAlgorithm($Algorithm);
 $mySignedHashValue = $myRSAFormatter.CreateSignature($myHashValue);
+
+#https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/protect-cmsmessage?view=powershell-7.4
