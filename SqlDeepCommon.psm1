@@ -238,16 +238,24 @@
         [OutputType([bool])]
         param (
             [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$ConnectionString,
-            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$DatabaseName
+            [Parameter(Mandatory=$true,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true,HelpMessage="Input string to cleanup")][ValidateNotNullOrEmpty()][string]$DatabaseName,
+            [Parameter(Mandatory=$false,HelpMessage='Check database is accesible')][switch]$AccesibilityCheck
         )
         begin {}
         process {
             [bool]$myAnswer=$false;
             [string]$myCommand=$null;
+            [string]$myUsedDatabaseName=$null;
             
             $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveWildcard -RemoveBraces ;
+            if ($AccesibilityCheck -eq $true){
+                $myUsedDatabaseName=$DatabaseName
+            } else {
+                $myUsedDatabaseName='master'
+            }
+
             $myCommand="
-                USE ["+$DatabaseName+"];
+                USE ["+$myUsedDatabaseName+"];
                 SELECT [name] AS Result FROM [master].[sys].[databases] WHERE name = '" + $DatabaseName + "';
                 ";
             try{

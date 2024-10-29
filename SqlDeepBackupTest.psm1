@@ -110,7 +110,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
             [SysRowVersion] [TIMESTAMP] NOT NULL,
             [TestResultDescription] [NCHAR](50) NULL,
             [HashValue]  AS (BINARY_CHECKSUM([InstanceName],[DatabaseName])),
-            [FinishTime] [DATETIME] NULL,
+            [FinishTime] [DATETIME] NULL
          CONSTRAINT [PK_dbo_"+$this.BackupTestCatalogTableName+"] PRIMARY KEY CLUSTERED 
         (
             [Id] ASC
@@ -328,7 +328,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
                         $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
                         $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
                         $this.LogWriter.Write($this.LogStaticMessage+('ShipDatabase ' + $DatabaseName + ' on ' + $mySourceInstanceName + ' with new name ' + $myDestinationDatabaseName), [LogType]::INF) 
-                        $myIsDatabaseRestored=Test-DatabaseConnection -ConnectionString $this.DestinationInstanceConnectionString -DatabaseName $myDestinationDatabaseName
+                        $myIsDatabaseRestored=Test-DatabaseConnection -ConnectionString $this.DestinationInstanceConnectionString -DatabaseName $myDestinationDatabaseName -AccesibilityCheck
                         $this.LogWriter.Write($this.LogStaticMessage+('Test database Connection '+ $myDestinationDatabaseName + ' on ' + $myDestinationInstanceName ), [LogType]::INF) 
                         if ($myIsDatabaseRestored -eq $true) {
                             $myTestResult = [TestResult]::RestoreSuccseed
@@ -341,10 +341,10 @@ hidden Init ([string]$BackupTestCatalogTableName)
                         }
                     } catch {
                         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
-                        $myIsDatabaseRestored=$false
                         $myTestResult = [TestResult]::RestoreFailed
                     } finally {
                         #Save Restore Result
+                        $myIsDatabaseRestored=Test-DatabaseConnection -ConnectionString $this.DestinationInstanceConnectionString -DatabaseName $myDestinationDatabaseName
                         $this.LogWriter.Write($this.LogStaticMessage+('Save Restore Result ' + $myTestResult + ' for ' + $myDestinationDatabaseName + ' into tabale  ' +  $this.BackupTestCatalogTableName ), [LogType]::INF) 
                         $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime),$myBackupStartDate)
                     }
@@ -360,7 +360,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
                             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
                             $myTestResult = [TestResult]::CheckDbFailed
                             $this.LogWriter.Write($this.LogStaticMessage+('checkdb on database:' + $myDestinationDatabaseName + ' has Failed'),[LogType]::INF); 
-                            
                         } finally {
                             $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime),$myBackupStartDate)
                             $this.LogWriter.Write($this.LogStaticMessage+('Save Checkdb Result ' + $myTestResult + ' for ' + $myDestinationDatabaseName + ' into tabale  ' +  $this.BackupTestCatalogTableName ), [LogType]::INF) 

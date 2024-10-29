@@ -254,7 +254,7 @@ Class LogWriter {
         $ArchiveFilePattern=$ArchiveFilePattern.Trim()
         if ($ArchiveFolderPath[-1] -ne "\") {$ArchiveFolderPath+="\"}
         if ($SourceFolderPath[-1] -ne "\") {$SourceFolderPath+="\"}
-        $mySourceFilePattern="^"+($SourceFilePattern.Replace("{Date}","([0-9]{8})").Replace("{DateTime}","([0-9]{8})_([0-9]{4})"))+"$"
+        $mySourceFilePattern="^"+($SourceFilePattern.Replace("{Database}",".*").Replace("{Date}","([0-9]{8})").Replace("{DateTime}","([0-9]{8})_([0-9]{4})"))+"$"
         $myZipPathTemplate = $ArchiveFolderPath + $ArchiveFilePattern + "{myGroup}.zip"
 
         Switch ($ArchiveFileTemplate) {
