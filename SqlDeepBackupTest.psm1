@@ -320,12 +320,13 @@ hidden Init ([string]$BackupTestCatalogTableName)
             Write-Host $mySourceInstanceName,$this.RestoreTo.DateTime,$DatabaseName
             if($this.IsTested($mySourceInstanceName,($this.RestoreTo.DateTime),$DatabaseName) -eq $false){
 
-                if ($myDestinationInstanceName -ne $mySourceInstanceName) { #Do not restore any database when Source instance is equal to Destination instance (Because of operational database replacement)
+               if ($myDestinationInstanceName -ne $mySourceInstanceName) { #Do not restore any database when Source instance is equal to Destination instance (Because of operational database replacement)
                     #Restore database to destination
                     try {
                         $this.LogWriter.Write($this.LogStaticMessage+('restored database with name:' + $myDestinationDatabaseName),[LogType]::INF);
                         $this.DestinationRestoreMode=[DatabaseRecoveryMode]::RECOVERY
                         $this.PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
+                        $this.RestoreFilesToIndividualFolders = $false
                         $this.ShipDatabase($DatabaseName,$myDestinationDatabaseName)
                         $this.LogWriter.Write($this.LogStaticMessage+('ShipDatabase ' + $DatabaseName + ' on ' + $mySourceInstanceName + ' with new name ' + $myDestinationDatabaseName), [LogType]::INF) 
                         $myIsDatabaseRestored=Test-DatabaseConnection -ConnectionString $this.DestinationInstanceConnectionString -DatabaseName $myDestinationDatabaseName -AccesibilityCheck
@@ -347,6 +348,15 @@ hidden Init ([string]$BackupTestCatalogTableName)
                         $myIsDatabaseRestored=Test-DatabaseConnection -ConnectionString $this.DestinationInstanceConnectionString -DatabaseName $myDestinationDatabaseName
                         $this.LogWriter.Write($this.LogStaticMessage+('Save Restore Result ' + $myTestResult + ' for ' + $myDestinationDatabaseName + ' into tabale  ' +  $this.BackupTestCatalogTableName ), [LogType]::INF) 
                         $this.SaveResultToBackupTestCatalog($DatabaseName,$myTestResult,($this.RestoreTo.DateTime),$myBackupStartDate)
+                        #$this.BackupFileList |  Select-Object -Unique -Property RemoteRepositoryUncFilePath | ForEach-Object{Remove-Item -Path ($_.RemoteRepositoryUncFilePath); $this.LogWriter.Write($this.LogStaticMessage+('Remove file ' + $_.RemoteRepositoryUncFilePath),[LogType]::INF)}
+                        foreach ($myFile in $this.BackupFileList | Select-Object -Unique -Property RemoteRepositoryUncFilePath){ 
+                            if(Test-Path $myFile.RemoteRepositoryUncFilePath){
+                                Remove-Item -Path ($_.RemoteRepositoryUncFilePath); $this.LogWriter.Write($this.LogStaticMessage+('Remove file ' + $_.RemoteRepositoryUncFilePath),[LogType]::INF)
+                            }
+                            else {
+                                $this.LogWriter.Write($this.LogStaticMessage+('File dose not  ' + $_.RemoteRepositoryUncFilePath),[LogType]::WRN)
+                            }
+                        }
                     }
                     
                     #Checkdb
@@ -356,7 +366,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
                             $this.TestDatabaseIntegrity($myDestinationDatabaseName)
                             $myTestResult = [TestResult]::CheckDbSuccseed
                             $this.LogWriter.Write($this.LogStaticMessage+('checkdb on database:' + $myDestinationDatabaseName + ' has Succseed'),[LogType]::INF); 
-                        } catch {
                             $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
                             $myTestResult = [TestResult]::CheckDbFailed
                             $this.LogWriter.Write($this.LogStaticMessage+('checkdb on database:' + $myDestinationDatabaseName + ' has Failed'),[LogType]::INF); 
