@@ -1,4 +1,4 @@
-Using module .\SqlDeepSync.psm1
+Using module .\SqlDeepDbPublisher.psm1
 
 [string]$mySourceConnectionString=$null
 [string]$myTargetConnectionString=$null
