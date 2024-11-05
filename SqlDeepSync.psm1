@@ -31,12 +31,12 @@ function Find-SqlPackageLocation {
     [OutputType([string])]
     param()
     begin {
+        [string]$myAnswer=$null
         [string]$myExeName = "SqlPackage.exe";
         [string]$mySqlPackageFilePath=$null;
         [string]$mySqlPackageFolderPath=$null;
     }
     process{
-        [string]$myAnswer=$null
         [string]$myProductVersion=$null
         try {
             # Get SQL Server locations
@@ -84,6 +84,9 @@ function Find-SqlPackageLocation {
         return $myAnswer
     }
     end {
+        if ($null -eq $myAnswer) {
+            Write-Host 'DacPac module does not found, please Downloaded and install it from https://www.powershellgallery.com/packages/PublishDacPac/ or run this command in powershell console: Install-Module -Name PublishDacPac'
+        }
     }
 }
 function Export-DatabaseDacPac {
@@ -274,8 +277,8 @@ Refrences:
 # SIG # Begin signature block
 # MIIbxQYJKoZIhvcNAQcCoIIbtjCCG7ICAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCBehLkQiYApv55e
-# HrMhGndIkXg+KW0MF6iIgmQrtYnktKCCFhswggMUMIIB/KADAgECAhAT2c9S4U98
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDHcJru0kEJoKNU
+# Jnd/Za0R7KPQKQjIzfKyo7RNv9NkQKCCFhswggMUMIIB/KADAgECAhAT2c9S4U98
 # jEh2eqrtOGKiMA0GCSqGSIb3DQEBBQUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
 # MB4XDTI0MTAyMzEyMjAwMloXDTI2MTAyMzEyMzAwMlowFjEUMBIGA1UEAwwLc3Fs
 # ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDivSzgGDqW
@@ -397,28 +400,28 @@ Refrences:
 # cWxkZWVwLmNvbQIQE9nPUuFPfIxIdnqq7ThiojANBglghkgBZQMEAgEFAKCBhDAY
 # BgorBgEEAYI3AgEMMQowCKACgAChAoAAMBkGCSqGSIb3DQEJAzEMBgorBgEEAYI3
 # AgEEMBwGCisGAQQBgjcCAQsxDjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEi
-# BCCuqd77eVu7iwCsxVunfl6h9SO3FJvaujx3mBCUD5gV3DANBgkqhkiG9w0BAQEF
-# AASCAQDCDK809J5pR0Q1Jkm52yp27WXyXYX5ligxsRvL3Jm0AQJI9NpMXNuPQgxq
-# +XFfz7Kis2c89VWN2hUYTUGI5gabyv9vnWbbGIUzJ77IUbKZ+CzAkba9YmTrye4a
-# gBwxKSI8chZfFgnfRZDIF9cgQJCtyqCne2vD28BFGoo8VKVXHEoKdhAPdOm0BW6r
-# Rxu4DeqfienL/z33OfQkWsKASnLm/ijdT8gncHlISGGeai9eTQDfhUyMPzz1etwe
-# 58A3Wtu9LtYyZMKxTkBJqDJoEMcRu4ld0A4RbbppZNeeLfE3Z82T+PM3/GO0jEa7
-# jod2koPDbNHI0w6ztNUVuEHR2GD0oYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJ
+# BCBbu3XtRSKEW6a7aZzVFQYXqOsp7ASsmacpZlZ7/gG5kDANBgkqhkiG9w0BAQEF
+# AASCAQCYTmogIaxoTzRk3Y9rz3he3wB6dSHjIqDTcql1hOfUVUdFGFtPTLn9qi6Q
+# ZfKs2ORlaoRIIsq3hUw6a/ro2MjX7qx4SRMTKPZ1Z64iBjxPIWqPL9GH89eyX1mc
+# VMmlDkv6TgETJyTX8mE2y4WHowx4rRjEDm4DuJMgjFBwL73lerVqOWS0wwqrsyhS
+# qebNWVP4oKqzRN3On8H7BmOSCs6u+t/KJs8JyrH3HlHjnVMq8eaRu3+2UNxz25QT
+# 4vi/k1e712vbkmHaEDQndLjmlSMGDxOwbUQRBsPMD99Kwxc9+6PWwTLm2GxdmPib
+# L7p9ExrH0nEZ3oZsi4nmX7TF3ej7oYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJ
 # AgEBMHcwYzELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTsw
 # OQYDVQQDEzJEaWdpQ2VydCBUcnVzdGVkIEc0IFJTQTQwOTYgU0hBMjU2IFRpbWVT
 # dGFtcGluZyBDQQIQC65mvFq6f5WHxvnpBOMzBDANBglghkgBZQMEAgEFAKBpMBgG
-# CSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MTEwMzA1
-# MTE0OVowLwYJKoZIhvcNAQkEMSIEIPIoIfB41UfN2slhcd01W04bPvVt82gj9/r4
-# sL5qgfcGMA0GCSqGSIb3DQEBAQUABIICAH+Cd6Q0yAb63nWYaTO7BiGTgKvHyoHl
-# GQ0lmr4JkXd6u0bkkEgwSYwHkF1EcvCcUcsZ1Njn+cnwSa0B1z4BdDBKnGCAcLvI
-# 2HgpF+Cg+IhHH9dY4Cak5bJE7hOhDFJDb+x2b/TpPiqnESvxWEbGPcWkvIviWBvo
-# UaiQPPcHq4opROaio0dOHPsZ37Hm8mhqmk3xNiFcNcixjcI7Wb0x7Cdcwr8s2piG
-# Q57n4jRpUTo2fjyrLx56mtVLrODIAnWUXjYY61WxSsiycaP2IPQUpVL4tkf1FI07
-# prUqoGeRRuY/1YgdOTSgDsZ89KCFby+WB/wvyRTFnJsEepE4Vb7/WHeELXHt/vTw
-# SCD6Jpb5+TPzszBjRfPNMorH1l9b6x5YXgcn5ma0qUfzHuMNQtFFkmNqVlTK1c7B
-# fKrG3kZWlWz641N367Ce5yi3TKa3EFHJWWvs3rUu0vGErwJJnzeXDj9E4N0Z/2kG
-# 9TOJLJ1deEgLnlQKGLZ5oP/3h42XKxixH5UinDDTqUuXzXb5kPRo84Xcy8VXDcga
-# NfYGlpNdI4bf/E9i+Owtzmmlk0Et32B8amoH1cg8fLZxgE+32/Hb5yukVqVu2Jch
-# GJUz1FgsSahl3qkPSQsRPSbLFLJ3IU2iF0vfznf4vUras/QEAfOkTmFnfnxniK8p
-# ESyHX5i1li6Z
+# CSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MTEwNTA3
+# NDgwMlowLwYJKoZIhvcNAQkEMSIEIH9Qkret6mnAkQr5fagqpUNQyjqmmMvJhqvd
+# JF4qXxkoMA0GCSqGSIb3DQEBAQUABIICAADJbvimFqQrLBJ4oL/UU5WaWiCaG6pc
+# sdTZY3wt2729qAPeaNM4WTV+UX2ANFeKCFuD0LrNDiJDqjBNK3U+g1UIIzp4OLh3
+# V7QVLcfpQNP8eTAEjKHVVbKV71n8UxqGmO/Oeuo4EMHlb1G4gMgKQxlWKkUcdYJr
+# PObqWectkOKGcFTRzup64PZPvr0B3ZEIKOUT6HwRvpUJiqvGTnDyXnZS+fUOdLdT
+# mwwUsOvgKvguxK90nKco1M+7Z1M+rml+ZyA7U6gCVsNnWBeF+lsgf23CvSehRjQ9
+# aAbkh160374DN3KTSehDqVGrAjkyDq9C3oAq/ZuDmzX7w4VRvb1r4T3a4liXreZU
+# KVi46dbzYohOXL4BU1UI9EMdAPtz0VGdX6co4PITekKAQPPc8MyYkNf5o6jbmM+1
+# BDW13v2NHSbbuSpmqqk12hc+f0yH6g/Hq/QZAwzICYRJKF1r6zT6/Irl4cPvP2KJ
+# NE78HZ6Zo69Fv7WMJd0dSJ4ih7SzcmVchLiLPlnFntMa1l7crZTU0zW/6L48i8tb
+# 6pDx/kXsM0udxFP7OVS3t7mYZk2njR/6gsQ/AVpzZiL7hIj6/6GTy38K+H7Tx/nd
+# 8H0G+A8ZGjNb+Z/RwPxB0bzwMtM1E0wy6dmssyITtp9s8w5MnCjGvxG4PdsxXGTX
+# FcUejPWnT1fp
 # SIG # End signature block
