@@ -30,9 +30,11 @@ function Find-SqlPackageLocation {
     #>
     [OutputType([string])]
     param(
-            [Parameter(Mandatory=$false,HelpMessage="Force function to return this path as SqlPackage.exe file path, if exists.")]$SqlPackageFilePath
+        [Parameter(Mandatory=$false,HelpMessage="Force function to return this path as SqlPackage.exe file path, if exists.")]$SqlPackageFilePath
     )
     begin {
+        Write-Host ('Find-SqlPackageLocation started.')
+        Write-Host ('Find-SqlPackageLocation called with ' + $SqlPackageFilePath)
         [string]$myAnswer=$null
         [string]$myExeName = "SqlPackage.exe";
         [string]$mySqlPackageFilePath=$null;
@@ -48,37 +50,43 @@ function Find-SqlPackageLocation {
             $myPathsToSearch += Resolve-Path -Path "${env:ProgramFiles(x86)}\Microsoft SQL Server\*\DAC\bin" -ErrorAction SilentlyContinue;
             $myPathsToSearch += Resolve-Path -Path "${env:ProgramFiles(x86)}\Microsoft Visual Studio *\Common7\IDE\Extensions\Microsoft\SQLDB\DAC" -ErrorAction SilentlyContinue;
             $myPathsToSearch += Resolve-Path -Path "${env:ProgramFiles(x86)}\Microsoft Visual Studio\*\*\Common7\IDE\Extensions\Microsoft\SQLDB\DAC\" -ErrorAction SilentlyContinue;    
-
             # For those that install SQLPackage.exe in a completely different location, set environment variable CustomSqlPackageInstallLocation
             $myCustomInstallLocation = [Environment]::GetEnvironmentVariable('CustomSqlPackageInstallLocation');
             $myCustomInstallLocation = Clear-FolderPath -FolderPath $myCustomInstallLocation
             if ($myCustomInstallLocation -ne '' -and $null -ne $myCustomInstallLocation) {
-                if (Test-Path -Path $myCustomInstallLocation) {
+                if (Test-Path $myCustomInstallLocation) {
                     $myPathsToSearch += Resolve-Path -Path ($myCustomInstallLocation+'\') -ErrorAction SilentlyContinue;
                 }        
             }
-
             foreach ($myPathToSearch in $myPathsToSearch) {
                 [System.IO.FileSystemInfo[]]$mySqlPackageExes += Get-Childitem -Path $myPathToSearch -Recurse -Include $myExeName -ErrorAction SilentlyContinue;
             }
-
             # list all the locations found
             [string]$myCurrentVersion=''
             foreach ($mySqlPackageExe in $mySqlPackageExes) {
                 $myProductVersion = $mySqlPackageExe.VersionInfo.ProductVersion.Substring(0,2);
+                Write-Host ('Product Version is ' + $myCurrentVersion + ' and Currently loaded version is ' + $myProductVersion)
                 if ($myProductVersion -gt $myCurrentVersion){
                     $myCurrentVersion=$myProductVersion
                     $myAnswer=$mySqlPackageExe
+                    Write-Host ('Product Version changes to ' + $myCurrentVersion)
                 }
                 Write-Host ($myProductVersion + ' ' + $mySqlPackageExe);
-            }       
+            } 
         }
         catch {
-            Write-Error 'Find-SqlPackageLocations failed with error: ' + $_.ToString();
+            Write-Error ('Find-SqlPackageLocations failed with error: ' + $_.ToString());
         }
 
-        if ($null -ne $SqlPackageFilePath -and (Test-Path -Path $SqlPackageFilePath) -eq $true) {
-            $myAnswer=$SqlPackageFilePath
+        if ($null -ne $SqlPackageFilePath -and ($SqlPackageFilePath.Length) -ge 10) {
+            if (Test-Path -Path $SqlPackageFilePath -PathType Leaf) {
+                $myAnswer=$SqlPackageFilePath
+                Write-Host ('User defined SqlPackageFilePath that send by caller was used with path: ' + $myAnswer)
+            }else{
+                Write-Host ('User defined SqlPackageFilePath parameter path does not exists' + $SqlPackageFilePath)
+            }
+        }else{
+            Write-Host ('User defined SqlPackageFilePath parameter is null or empty' + $SqlPackageFilePath + ', file length is ' + $SqlPackageFilePath.Length.ToString())
         }
         if ($myAnswer) {
             $mySqlPackageFilePath=$myAnswer
@@ -86,12 +94,14 @@ function Find-SqlPackageLocation {
             $mySqlPackageFolderPath=Clear-FolderPath -FolderPath $mySqlPackageFolderPath
             if (-not ($env:Path).Contains($mySqlPackageFolderPath)) {$env:path = $env:path + ';'+$mySqlPackageFolderPath+';'}
         }
+        Write-Host $myAnswer
         return $myAnswer
     }
     end {
         if ($null -eq $myAnswer) {
-            Write-Host 'DacPac module does not found, please Downloaded and install it from https://www.powershellgallery.com/packages/PublishDacPac/ or run this command in powershell console: Install-Module -Name PublishDacPac'
+            Write-Host 'DacPac module does not found, please Downloaded and install it from official site https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-download?view=sql-server-ver16 or install informal version from https://www.powershellgallery.com/packages/PublishDacPac/ or run this command in powershell console: Install-Module -Name PublishDacPac'
         }
+        Write-Host ('Find-SqlPackageLocation finished.')
     }
 }
 function Export-DatabaseDacPac {
@@ -282,8 +292,8 @@ Refrences:
 # SIG # Begin signature block
 # MIIbxQYJKoZIhvcNAQcCoIIbtjCCG7ICAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDVJ3uWHm7gfKFD
-# 8b23aWvPylhh9vBo+qokFVNjnK5R0aCCFhswggMUMIIB/KADAgECAhAT2c9S4U98
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAgjhqQKtmbU8Z2
+# NS3JljyvS02fHoV4mhucSTnKnUyv/qCCFhswggMUMIIB/KADAgECAhAT2c9S4U98
 # jEh2eqrtOGKiMA0GCSqGSIb3DQEBBQUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
 # MB4XDTI0MTAyMzEyMjAwMloXDTI2MTAyMzEyMzAwMlowFjEUMBIGA1UEAwwLc3Fs
 # ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDivSzgGDqW
@@ -405,28 +415,28 @@ Refrences:
 # cWxkZWVwLmNvbQIQE9nPUuFPfIxIdnqq7ThiojANBglghkgBZQMEAgEFAKCBhDAY
 # BgorBgEEAYI3AgEMMQowCKACgAChAoAAMBkGCSqGSIb3DQEJAzEMBgorBgEEAYI3
 # AgEEMBwGCisGAQQBgjcCAQsxDjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEi
-# BCD9o43jXJPKlO7EnB9qc4YU350iQJXuiJKbPrKnsluRLjANBgkqhkiG9w0BAQEF
-# AASCAQAmtTleIeyQumdwFudlRwMmJD+zphyfUcbhbMVUqmyWlnHX1jcNjiy1eO63
-# HPmfHkkXHeJ6ZSy63oVuZnN4toGRwin9/MefT52WQ0ofYnYONtx+49jtgcst4VI2
-# 2rVM/Kh2TZVBLz90wdkPAgeAgFNYATBluYgXjF+abP0EJrEMhA6kkbfAB9tAU0Wf
-# 8BUMV8VtZ2ZmWUQhj/ZJOyg82TqONKjZYmS5rUE0bTSRBGZpg5oBSbvGXHUL7Wy8
-# H07+A65MofJZoQH2qMTR0JWNkKeTRjZuAVIOesgQBb92REeJEuOysCZ8V1xgMy7B
-# 1mPQ/ysf2COHka7woc0AqZopYdgyoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJ
+# BCB2584O+K8SbZj+n2C7y0D9jbnatWIYQmk5ksqRyC/HZzANBgkqhkiG9w0BAQEF
+# AASCAQC2g4sFb/GgmKz4ezDZo2CrV2qo+L3QLDj6BOyxhaRTNaj+ftIUPW0QRpJF
+# tMWd77uI256XOVfls8w+J37lXJJwqryLBtb+a67sHDLLDWLCO+U3TvKGYybRIUSG
+# nlxwjIVkvleqDcOYhOLQ/DE2AlhxdU/2zV2W+R6G+sPEZhgBBEMPD6NOxvWln8yI
+# PRwNR6qI+QuqeW1ttNFtyxAxxVTVKdr2JN7Fu0Vwcw20XALXJagjCW9s1MbC0OOB
+# cUFsC4tEJ1r873tCLh8XpN7QKOsKKWTZlq1I3OgvLWGbAFmjOigyODpnGh+ApoBh
+# wDxGyqVHzGs6KWLqo+dvefQzu65GoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJ
 # AgEBMHcwYzELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTsw
 # OQYDVQQDEzJEaWdpQ2VydCBUcnVzdGVkIEc0IFJTQTQwOTYgU0hBMjU2IFRpbWVT
 # dGFtcGluZyBDQQIQC65mvFq6f5WHxvnpBOMzBDANBglghkgBZQMEAgEFAKBpMBgG
-# CSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MTExMjE1
-# NTY0NlowLwYJKoZIhvcNAQkEMSIEICy0Z3kL9gASRPAJHPM908f1uAaSGBj3jjI5
-# /h50NmjeMA0GCSqGSIb3DQEBAQUABIICAJOokte/rdLd3xUbbhTq0PA+hngfRfye
-# Rmbh20e24ql/WfmndQWS+or2lW96dj+OUukJUl0Gaq0lzdRkG4GT5tRar3yfzzQX
-# c/V+s0HrV+Q6W0/kSFbZjWMnsI2aO6nO2qUM5X8M7zUUZRxWMu4B3twa+QKESDmB
-# ABq69o5jvDBZISI1GMSt1jjTr5AbJDLDEwOwsjtIqCzbcObXxZPFhZzCgJtZsaFb
-# DqeCUOcT5ibMUPATyQEDKYlQNuPunl6jHWWSm1VckzRCtNx5oL67FUSkbOjO5XHY
-# 8sgOURPgjgaflhji/B1y1fmvtzixS+pttQy+dtWOoEE+Y3Fv3/47b3U3HG75bGv9
-# fpjV8GaW4xiRhzmVKi2/NVixc9b7IACcOURGO05AsgVKdK5hjc9g3H0/07rz5SXi
-# dQ3rpjURv43C4UUExK6emkKVCQUNwfD+UN0k8eGkf/Na4R+BPNw2jN3Z4ZCjPeEg
-# 2pOlG5WL543qFty2soow04JEUa8B5p2UW3RHCuI/X651rqP3xtHg1khgXhELs3td
-# d5L6eLqII/wk/egZFRdtT5pgMH5u1ZqK2i+PKr5mvF0iBwQplEsNIF0zVumvyE5g
-# Q1dZ4bjNA09jkzdAcimjinJuxIgW63QrmGFgCTvvMN0RHmq88WglrPFTuJgm8Bri
-# SRp230GWoB1f
+# CSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MTExMjE2
+# NTcxNVowLwYJKoZIhvcNAQkEMSIEII5baUXhzBt0RQhOB9wicXKZ5i+dQUPjyaLO
+# vVmgXD4oMA0GCSqGSIb3DQEBAQUABIICAH5rNjvVP9FDUKXhaxprHu8NeROYvv76
+# x5X+/aysZGeEpV7XFfCKfHEOLURt7iczjleoTqRCZ28bjKSB18LJjRVvbTEbJ9/S
+# Pi0CzHPZdKY7jMnpjMgv+y4/XNpDYsfTGdYngu62fx1ky19W371siJ0t6Y5MDpuZ
+# 69ciYOipAkaObmneS+AkhdsW6tFhRHf1p5+hGXBpBBmgjO8HRhFb5ZzdTwFCxjpd
+# 8D7lS8TxUAzjaOnfZ3NoQZYxrbf1W3KKmUkGJKcZBeIl0JuF22On66A7HQtyO4Qf
+# o10MD61WR0tN/zZv6OjFHvE0x3mLZt6Ye0UbCz7sJoxgn/kNeCtdsMLtLf2y83FH
+# W77iI1SalhEZf2ff/ncHk0jFSuCN9ewuf4Y+Kif8/JexjoqGI6xuk3EggOiLSVUc
+# M64I4DzM9El0N95mHUrxxWb44KamsBZaS5HZuCh2WJEpa6re4m8zTogCX5bT6SAj
+# hog7kI+YXGVE7zxxlvmiRSR14Mzf2fuG26eag0O/dv5PCfmkMrmLDNlJilfXx35Y
+# 4sYoe0TBDGJwjsO/b1MMiSIjJlZaFv+wr4bJLnZ57leCkNITTQ53dmVQIrmINnOk
+# biWDSx+Gac29lQAeW3sNH+WJTUG+CWApL7N2d5pXPExk4qq+PHnfTzL9vhZZCK3b
+# 7apHF+NB4849
 # SIG # End signature block
