@@ -29,7 +29,9 @@ function Find-SqlPackageLocation {
         This PowerShell script is released under the MIT license http://www.opensource.org/licenses/MIT
     #>
     [OutputType([string])]
-    param()
+    param(
+            [Parameter(Mandatory=$false,HelpMessage="Force function to return this path as SqlPackage.exe file path, if exists.")]$SqlPackageFilePath
+    )
     begin {
         [string]$myAnswer=$null
         [string]$myExeName = "SqlPackage.exe";
@@ -75,6 +77,9 @@ function Find-SqlPackageLocation {
             Write-Error 'Find-SqlPackageLocations failed with error: ' + $_.ToString();
         }
 
+        if ($null -ne $SqlPackageFilePath -and (Test-Path -Path $SqlPackageFilePath) -eq $true) {
+            $myAnswer=$SqlPackageFilePath
+        }
         if ($myAnswer) {
             $mySqlPackageFilePath=$myAnswer
             $mySqlPackageFolderPath=(Get-Item -Path $mySqlPackageFilePath).DirectoryName
