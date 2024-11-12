@@ -50,8 +50,8 @@ function Find-SqlPackageLocation {
             # For those that install SQLPackage.exe in a completely different location, set environment variable CustomSqlPackageInstallLocation
             $myCustomInstallLocation = [Environment]::GetEnvironmentVariable('CustomSqlPackageInstallLocation');
             $myCustomInstallLocation = Clear-FolderPath -FolderPath $myCustomInstallLocation
-            if ($myCustomInstallLocation -ne '') {
-                if (Test-Path $myCustomInstallLocation) {
+            if ($myCustomInstallLocation -ne '' -and $null -ne $myCustomInstallLocation) {
+                if (Test-Path -Path $myCustomInstallLocation) {
                     $myPathsToSearch += Resolve-Path -Path ($myCustomInstallLocation+'\') -ErrorAction SilentlyContinue;
                 }        
             }
@@ -277,8 +277,8 @@ Refrences:
 # SIG # Begin signature block
 # MIIbxQYJKoZIhvcNAQcCoIIbtjCCG7ICAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDR9iJ88HoJf2PJ
-# +GiDXt5+jTn8Ag9ttAcowAFoI1UtKaCCFhswggMUMIIB/KADAgECAhAT2c9S4U98
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCSGWi3gU2ALn4J
+# 4PFF+L/axbPyvmWUqkOJCrnJ4G89HqCCFhswggMUMIIB/KADAgECAhAT2c9S4U98
 # jEh2eqrtOGKiMA0GCSqGSIb3DQEBBQUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
 # MB4XDTI0MTAyMzEyMjAwMloXDTI2MTAyMzEyMzAwMlowFjEUMBIGA1UEAwwLc3Fs
 # ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDivSzgGDqW
@@ -400,28 +400,28 @@ Refrences:
 # cWxkZWVwLmNvbQIQE9nPUuFPfIxIdnqq7ThiojANBglghkgBZQMEAgEFAKCBhDAY
 # BgorBgEEAYI3AgEMMQowCKACgAChAoAAMBkGCSqGSIb3DQEJAzEMBgorBgEEAYI3
 # AgEEMBwGCisGAQQBgjcCAQsxDjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEi
-# BCCb/CPDc+iJP5f17+2yHUM20M754VBNfaZ+HpFVKk+EfzANBgkqhkiG9w0BAQEF
-# AASCAQDPT37A+XLy+MemA9vQ05JBksbPZmN0GXe4v6UxxnO+kQUnbbVCHlCkYQo0
-# bsRuRncl2kbFCpmc+DICnAanq4bU59INCP3VagfGAmqK2KayZ/VLRN+3czfLRyKq
-# stJ6UYt8HCoWlxzPpYs+sVcBiXAr2RApnRqEgq82Fzv1QpAeqHH76YVFDEGLoRBx
-# QzoRAQxj7PfidrQpZOrwHi2+yvlAdQZw5u17hzKtyZNABodRCJ07iDzdfSOj9PL7
-# zJjijvnyHCaA+2sXyMUXvcGxS7ckjOc4rXuc2Vsvl3WIF+YtGZFPwJhRCPq5CvjE
-# K6gFoepJXQ9uTbHb4p4P/EytrjogoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJ
+# BCA2dHyWfxcz0WaziLsgXb43ZuxFjSOHYszTui/wVo+LSTANBgkqhkiG9w0BAQEF
+# AASCAQAtNQkigQlS4tGw528SR/rdyokWJC9Jv2IPbk1VjsoxeVDBu41hAdJPv1l5
+# 23/3f6oE1pv9dGHuSwutt93c68vf5YlCXh1F4H3Fsf7Z+ry69DssxJAuJg1WjH5X
+# E2KiJyJ3l+p3xnklZU7cMhnQyFC70a0nFP09hTRijnGAZTyOLEGZOlfPW9vZ8HBG
+# iXBYlj0dg5+XXBJCzAicrbke2SBQ0an3y9bEPC/Q06Q6aYWOl1FmVRZ03/mX0j5Y
+# nQH6o4w6lokoSG8Xa4o1VEkNwnjvmRSlpeMm6nksyHIMv/aa+PRDj4Xl1zP+WRL/
+# 1usfURdHHfKwtt/v+gJJyrWCIYaioYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJ
 # AgEBMHcwYzELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTsw
 # OQYDVQQDEzJEaWdpQ2VydCBUcnVzdGVkIEc0IFJTQTQwOTYgU0hBMjU2IFRpbWVT
 # dGFtcGluZyBDQQIQC65mvFq6f5WHxvnpBOMzBDANBglghkgBZQMEAgEFAKBpMBgG
-# CSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MTEwNjIy
-# MDY0M1owLwYJKoZIhvcNAQkEMSIEIA+qE/xXYEf5XUGqs/9yWgmCB+9h16w82q17
-# nGZ5M+s1MA0GCSqGSIb3DQEBAQUABIICAFWof3ugEBjf6CrEyg91gqfFQsXI96GP
-# h9k4yWgXMedjXiSR+F0XlQ2ThnLqM0IZVQ4/kbdtx4/30OOwD3ziDwurIR9EZmkr
-# Ro5Twj1YcwqzUhPgEf4cE259RWe84//GjwKXEriZ7IiIScRXi76kBBF6Bj4s2Daw
-# 3MW+1TW9xuIfVPejTkZ37YN5cUwdaib2ibV8YwJxvjKr0ftxuARHZDlEV0nRj7Z3
-# PKAtmeIhKZMSm2/C5+UN9f2KN/9+pUgPw6yoSujdHwqo/AlEDZUfohIoRZCsV0Dt
-# kDfmFAX1wJjetAvFFjvFOecvriH9zqhQAlFJafYTNiH/OJdtv5+m2V+L7SHDCbGp
-# xox7+mjzYlUMyVot8Tfw5CIAzQAx/ke5XW+89kBaP7IVnBGAI12YXd/AI/0W1ypW
-# 0UdGKb09m1D/lOw8Z8MVmIAP/Yd6B7jUlFTuK/+JLBQ4u2r02PfV3hJwH6BUxbPq
-# s+h84wZCQcZJ+T8Ef8zwO9xPi//waVnGXomVTdyJWK2facJ+aXUbCFt30qK87TJn
-# y6ImPef09tR04umoFz8HdevZ37tmyZ+CaA5ollaCQxRzHx9Y6BDCfnjvVqJCaOVp
-# v38FaUml+H+giQ+Nr3atcKrRYvvv3wS19/KAXrU8WJWjlDrBErMdqUBme2iPhH00
-# +rRAbeE3NxLZ
+# CSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MTExMjE0
+# Mzg0NlowLwYJKoZIhvcNAQkEMSIEIGFQ1q6ifOFutEbgHgf2necNBpBYVA5PytOT
+# L/N9tLkAMA0GCSqGSIb3DQEBAQUABIICACLH7iTSTQuXrczYEKZstg/qU6mJQt2U
+# we4m7VnQIck7BaT9axbk1ZiYuJDqaHlM39aGZWFFzaWnaZpFnTmwQ6RMCtUeLgeu
+# T8pSCVZhgvkh1SLnQZHIgFRRfKYb79Pwo6SGH7ERkBDXnN6p8GSLJCe5kyNSBG1o
+# 8SWEhLD9bT4rZPTKE2J3FSNh/wUv7b3NRbg6jbXvoVRWRkhU+vmhPqbzciE5ivVy
+# TVr7etAGtogspnxp/eSj4mlW0nBux10+ComXH/l/O+POX2InGD8aPrXJCPMbXmZ6
+# 3wLbeMttZxoDPbOVc9MenlaCIFb0iGi+krtxAQKttxUoIwJtx47ABk6eGd3/r2+M
+# 9WiO+j/p/G3L6P/qcrN9tv4ljpZIUQqMDD/R9GUIKu429EDFssyEvWw9c6HwbHTj
+# DPBI0PXG8MfMwT3+9zsE+5w0cXLfXgJxeS2WsiIxTjSo//wov5om/oz0CG560PBP
+# ZPHP8Mtu+5rYam3N3iuf2FjV2HcykzYFP+7UjK++q7VZ4fkzg0jixE4V730mtfh8
+# O9PNJ0MSHzMfHxA1v3YCFAFt6eo5ihe3m7iRYmzUuwQ0P6aKmN8rNVI1yMYsUSns
+# b5djlmSl8oDK+QdkaZPvYRPgjq0RSEw1QqUxcScEJB0zFzPWGNjy6IzXgL8ioLAW
+# j4RJNepwh8ZP
 # SIG # End signature block
