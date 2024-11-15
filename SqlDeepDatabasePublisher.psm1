@@ -116,7 +116,7 @@ function Export-DatabaseDacPac {
         try
         {
             if (Test-Path -Path $DacpacFilePath) {Remove-Item -Path $DacpacFilePath -Force}
-            $null=SqlPackage /Action:Extract /OverwriteFiles:true /SourceConnectionString:$ConnectionString /TargetFile:$DacpacFilePath /Properties:IgnorePermissions=False /Properties:ExtractAllTableData=False /Properties:TableData=[maintenance].[_CatalogOfFields] /Properties:TableData=[maintenance].[_CatalogOfTables] /Properties:TableData=[maintenance].[Lookup_VariableSource] /Properties:TableData=[maintenance].[Variables];
+            $null=SqlPackage /Action:Extract /OverwriteFiles:true /SourceConnectionString:$ConnectionString /TargetFile:$DacpacFilePath /Properties:VerifyExtraction=True /Properties:IgnoreExtendedProperties=False /Properties:IgnorePermissions=False /Properties:IgnoreUserLoginMappings=False /Properties:ExtractReferencedServerScopedElements=True /Properties:ExtractAllTableData=False /Properties:TableData=[maintenance].[_CatalogOfFields] /Properties:TableData=[maintenance].[_CatalogOfTables] /Properties:TableData=[maintenance].[Lookup_VariableSource] /Properties:TableData=[maintenance].[Variables];
             if (Test-Path -Path $DacpacFilePath) {$myAnswer=$true}
             return $myAnswer
         }
@@ -143,7 +143,7 @@ function Get-PrePublishReport {
         try
         {
             if (Test-Path -Path $DacpacFilePath) {
-                $null=SqlPackage /Action:DeployReport /OutputPath:$ReportFilePath /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Properties:AllowIncompatiblePlatform=True /Properties:BackupDatabaseBeforeChanges=True /Properties:BlockOnPossibleDataLoss=False /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropObjectsNotInSource=True /Properties:GenerateSmartDefaults=True /Properties:IgnoreExtendedProperties=True /Properties:IgnoreFilegroupPlacement=False /Properties:IgnoreFillFactor=False /Properties:IgnoreIndexPadding=False /Properties:IgnoreObjectPlacementOnPartitionScheme=False /Properties:IgnorePermissions=True /Properties:IgnoreRoleMembership=True /Properties:IgnoreSemicolonBetweenStatements=False /Properties:IncludeTransactionalScripts=True /Properties:VerifyDeployment=True;
+                $null=SqlPackage /Action:DeployReport /OutputPath:$ReportFilePath /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Properties:AllowIncompatiblePlatform=True /Properties:BackupDatabaseBeforeChanges=True /Properties:BlockOnPossibleDataLoss=False /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropConstraintsNotInSource=True /Properties:DropDmlTriggersNotInSource=True /Properties:DropExtendedPropertiesNotInSource=True /Properties:DropIndexesNotInSource=True /Properties:DropObjectsNotInSource=True /Properties:DropPermissionsNotInSource=False /Properties:DropRoleMembersNotInSource=False /Properties:DropStatisticsNotInSource=True /Properties:GenerateSmartDefaults=True /Properties:IgnoreAuthorizer=False /Properties:IgnoreExtendedProperties=False /Properties:IgnoreFilegroupPlacement=False /Properties:IgnoreFillFactor=False /Properties:IgnoreIndexPadding=False /Properties:IgnoreObjectPlacementOnPartitionScheme=False /Properties:IgnorePermissions=False /Properties:IgnoreRoleMembership=False /Properties:IgnoreSemicolonBetweenStatements=False /Properties:IncludeTransactionalScripts=True /Properties:VerifyDeployment=True;
                 $myAnswer=$true
             }
             return $myAnswer
@@ -170,7 +170,7 @@ function Publish-DatabaseDacPac {
         try
         {
             if (Test-Path -Path $DacpacFilePath) {
-                $null=SqlPackage /Action:Publish /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Properties:AllowIncompatiblePlatform=True /Properties:BackupDatabaseBeforeChanges=True /Properties:BlockOnPossibleDataLoss=False /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropObjectsNotInSource=True /Properties:GenerateSmartDefaults=True /Properties:IgnoreExtendedProperties=True /Properties:IgnoreFilegroupPlacement=False /Properties:IgnoreFillFactor=False /Properties:IgnoreIndexPadding=False /Properties:IgnoreObjectPlacementOnPartitionScheme=False /Properties:IgnorePermissions=True /Properties:IgnoreRoleMembership=True /Properties:IgnoreSemicolonBetweenStatements=False /Properties:IncludeTransactionalScripts=True /Properties:VerifyDeployment=True;
+                $null=SqlPackage /Action:Publish /OverwriteFiles:true /TargetConnectionString:$ConnectionString /SourceFile:$DacpacFilePath /Diagnostics /Properties:AllowIncompatiblePlatform=True /Properties:BackupDatabaseBeforeChanges=True /Properties:BlockOnPossibleDataLoss=False /Properties:DeployDatabaseInSingleUserMode=True /Properties:DisableAndReenableDdlTriggers=True /Properties:DropConstraintsNotInSource=True /Properties:DropDmlTriggersNotInSource=True /Properties:DropExtendedPropertiesNotInSource=True /Properties:DropIndexesNotInSource=True /Properties:DropObjectsNotInSource=True /Properties:DropPermissionsNotInSource=False /Properties:DropRoleMembersNotInSource=False /Properties:DropStatisticsNotInSource=True /Properties:GenerateSmartDefaults=True /Properties:IgnoreAuthorizer=False /Properties:IgnoreExtendedProperties=False /Properties:IgnoreFilegroupPlacement=False /Properties:IgnoreFillFactor=False /Properties:IgnoreIndexPadding=False /Properties:IgnoreObjectPlacementOnPartitionScheme=False /Properties:IgnorePermissions=False /Properties:IgnoreRoleMembership=False /Properties:IgnoreSemicolonBetweenStatements=False /Properties:IncludeTransactionalScripts=True /Properties:VerifyDeployment=True;
                 $myAnswer=$true
             }
             return $myAnswer
@@ -292,8 +292,8 @@ Refrences:
 # SIG # Begin signature block
 # MIIbxQYJKoZIhvcNAQcCoIIbtjCCG7ICAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAgjhqQKtmbU8Z2
-# NS3JljyvS02fHoV4mhucSTnKnUyv/qCCFhswggMUMIIB/KADAgECAhAT2c9S4U98
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCED5TDdfN64+Cf
+# /8FsirFqpytCyVEXJ+Uhmm1fvnjcyaCCFhswggMUMIIB/KADAgECAhAT2c9S4U98
 # jEh2eqrtOGKiMA0GCSqGSIb3DQEBBQUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
 # MB4XDTI0MTAyMzEyMjAwMloXDTI2MTAyMzEyMzAwMlowFjEUMBIGA1UEAwwLc3Fs
 # ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDivSzgGDqW
@@ -415,28 +415,28 @@ Refrences:
 # cWxkZWVwLmNvbQIQE9nPUuFPfIxIdnqq7ThiojANBglghkgBZQMEAgEFAKCBhDAY
 # BgorBgEEAYI3AgEMMQowCKACgAChAoAAMBkGCSqGSIb3DQEJAzEMBgorBgEEAYI3
 # AgEEMBwGCisGAQQBgjcCAQsxDjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEi
-# BCB2584O+K8SbZj+n2C7y0D9jbnatWIYQmk5ksqRyC/HZzANBgkqhkiG9w0BAQEF
-# AASCAQC2g4sFb/GgmKz4ezDZo2CrV2qo+L3QLDj6BOyxhaRTNaj+ftIUPW0QRpJF
-# tMWd77uI256XOVfls8w+J37lXJJwqryLBtb+a67sHDLLDWLCO+U3TvKGYybRIUSG
-# nlxwjIVkvleqDcOYhOLQ/DE2AlhxdU/2zV2W+R6G+sPEZhgBBEMPD6NOxvWln8yI
-# PRwNR6qI+QuqeW1ttNFtyxAxxVTVKdr2JN7Fu0Vwcw20XALXJagjCW9s1MbC0OOB
-# cUFsC4tEJ1r873tCLh8XpN7QKOsKKWTZlq1I3OgvLWGbAFmjOigyODpnGh+ApoBh
-# wDxGyqVHzGs6KWLqo+dvefQzu65GoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJ
+# BCCaPvKZFlTorvKPMuUF91/45fEiM/kA6ulNGWwlsb8blzANBgkqhkiG9w0BAQEF
+# AASCAQAVM0R2AxIWfCWTV1VqYmUlN7WEAJNbn81ynEcivbrkDy9eSYYRMo+6YtrS
+# FJgERKR2SoYDCd5qYetCAbDUDR0+XFDMSZuvmoZnZPQojg5Bvbu/CvxVS1Lg7BwA
+# hikTRQVFVtN65Y6QzVmjaN+MmeiOglvlZy/5yji0UiGZeSwF6L+2zyMU7/URmhLc
+# 4Q9Zl0WApUQ03vOD6ndoO5B96KRT/LFX3eG6Xv1JlegAOZ370CUhIs0pH+xZ31x4
+# GUKVGMs1IsRESHGSgQYqh3z6C/hsJAI4pfZ6vBWlMUu7U4T0qBPJ46nE1Ogra+29
+# h3nJsfXuA3or7ZRKLtu4UofOBAkXoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJ
 # AgEBMHcwYzELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTsw
 # OQYDVQQDEzJEaWdpQ2VydCBUcnVzdGVkIEc0IFJTQTQwOTYgU0hBMjU2IFRpbWVT
 # dGFtcGluZyBDQQIQC65mvFq6f5WHxvnpBOMzBDANBglghkgBZQMEAgEFAKBpMBgG
-# CSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MTExMjE2
-# NTcxNVowLwYJKoZIhvcNAQkEMSIEII5baUXhzBt0RQhOB9wicXKZ5i+dQUPjyaLO
-# vVmgXD4oMA0GCSqGSIb3DQEBAQUABIICAH5rNjvVP9FDUKXhaxprHu8NeROYvv76
-# x5X+/aysZGeEpV7XFfCKfHEOLURt7iczjleoTqRCZ28bjKSB18LJjRVvbTEbJ9/S
-# Pi0CzHPZdKY7jMnpjMgv+y4/XNpDYsfTGdYngu62fx1ky19W371siJ0t6Y5MDpuZ
-# 69ciYOipAkaObmneS+AkhdsW6tFhRHf1p5+hGXBpBBmgjO8HRhFb5ZzdTwFCxjpd
-# 8D7lS8TxUAzjaOnfZ3NoQZYxrbf1W3KKmUkGJKcZBeIl0JuF22On66A7HQtyO4Qf
-# o10MD61WR0tN/zZv6OjFHvE0x3mLZt6Ye0UbCz7sJoxgn/kNeCtdsMLtLf2y83FH
-# W77iI1SalhEZf2ff/ncHk0jFSuCN9ewuf4Y+Kif8/JexjoqGI6xuk3EggOiLSVUc
-# M64I4DzM9El0N95mHUrxxWb44KamsBZaS5HZuCh2WJEpa6re4m8zTogCX5bT6SAj
-# hog7kI+YXGVE7zxxlvmiRSR14Mzf2fuG26eag0O/dv5PCfmkMrmLDNlJilfXx35Y
-# 4sYoe0TBDGJwjsO/b1MMiSIjJlZaFv+wr4bJLnZ57leCkNITTQ53dmVQIrmINnOk
-# biWDSx+Gac29lQAeW3sNH+WJTUG+CWApL7N2d5pXPExk4qq+PHnfTzL9vhZZCK3b
-# 7apHF+NB4849
+# CSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MTExNTE4
+# MDg1NVowLwYJKoZIhvcNAQkEMSIEIGEcJ0HLWSfh3vvPPrvwVyCGfFZVEMdPJHpu
+# oqeTLOb4MA0GCSqGSIb3DQEBAQUABIICADZXU6xXL6NQDO2W2OzmfeFLDBEuNYpy
+# w4QaaNGMCIJ3FuaXEEFDJCsXqLdB94mSQ47yjKbLpCqIch0AEEoyXffZq4QpVdvv
+# 9wp238+FMw1hmLUm9QrEpb8TeVdZurMTeSM7rpNb/g8zYviTuOIOhFcyXXi77S2J
+# ocoQArty7tfx35IJf2O2ejyhszPPQI1M+s0Q9+u1XCQSm+vZ5wNbn9LdGRYzxSWV
+# J2r4KGSdqNjbV4DfjT5wGg5XH9FRM+4/uINM0xQ0P7usn3FUHC0AvQ4o+dlH9I5q
+# HnQrZ7093ehwROreWYoUPiUfn1Yt+BQEiMowIW1yNhTr8mApvYhxXevzZtauCfve
+# eONHQjUTFxK+xqFHIbgGsYcb1E+PttvaFhw3SxvJ6apThDP7lPIfGLPigTYXxcqg
+# IWCI2bWaWbPenmYBbqTN7Qto3gXrFTxU98mf+BFjSrdalhEtABjSrVYnsubnB9VS
+# in1miVi0m5f412d7vGZQBB8AWFsIxvTBkfwllgQSju+e/kupfxt1XwrGhwggSy+N
+# lFZiinKIQf+4mUnQxh0m14H5d5duQgxnZVok4/PUav91iNkI35PqGjXWCplWbB2y
+# wj88x3y/zwagM8vnV16bH0KsKCdma2J3qKjxvvvnsDGJl/q6YGaXd1uBelkwc88m
+# kYvKD8kHcfFA
 # SIG # End signature block
