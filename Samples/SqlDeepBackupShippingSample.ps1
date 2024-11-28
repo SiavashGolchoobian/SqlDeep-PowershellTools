@@ -78,6 +78,12 @@ $myBackupShipping.RetainDaysOnDestination='CustomRule01'
 $myBackupShipping.TransferedFileDescriptionSuffix='Transfereds'
 $myBackupShipping.BackupShippingCatalogTableName='TransferredFiles'
 $myBackupShipping.WinScpPath='U:\Install\WinSCP\WinSCPnet.dll'
+<# HOW TO GENERATE CipheredPassword:
+$myByteKey=(8,7,1,3,3,3,7,9,7,3,5,3,1,2,5,5,6,0,7,4,6,3,7,8,4,6,3,4,3,8,1,1)
+$myPassAsPlain = 'P@$$W0rd'
+$mySecureString = ConvertTo-SecureString $myPassAsPlain -AsPlainText -Force
+$myEncryptedString = ConvertFrom-SecureString -SecureString $mySecureString -Key $myByteKey
+#>
 $myByteKey=(8,7,1,3,3,3,7,9,7,3,5,3,1,2,5,5,6,0,7,4,6,3,7,8,4,6,3,4,3,8,1,1)    #32 byte
 $myCipheredPassword="DFGBFDGbfdg042SDFBDFBJ<MJGK<AVgA1AFIAUgA5ADEANQB1ADcAVgBvAHoAUwsdfvdsfbAGEAYQBlADAAYgAzAGYAOABkADEAZAA3ADYANwA0ADAANgBiADMANwA1AGMANgBmADkANgBjADIAYQBhADgAMAA0ADYAZQAzAGEAZQAzADIAMABmAGQAYQA1ADkAYwAzADYANAA4ADAANQAxADYAYgA="
 $myBackupShipping.Set_DestinationCredential('sqldeepbackup',$myCipheredPassword,$myByteKey)
