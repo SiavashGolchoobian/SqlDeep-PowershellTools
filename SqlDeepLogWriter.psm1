@@ -105,6 +105,7 @@ Class LogWriter {
         ) BEGIN
             CREATE TABLE" + $this.LogTableName + "(
                 [Id] [bigint] IDENTITY(1,1) NOT NULL,
+                [EventSource] [nvarchar](255) NOT NULL,
                 [Module] [nvarchar](255) NOT NULL,
                 [EventTimeStamp] [datetime] NOT NULL,
                 [Serverity] [nvarchar](50) NULL,
