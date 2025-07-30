@@ -38,3 +38,4 @@ $myShip.ShipAllUserDatabases($Prefix,$myExcludedList)
 $myShip.DataFolderRestoreLoation="F:\Data02\Databases\Data"
 $myShip.LogFolderRestoreLoation="F:\Log02\Databases\Data"
 $myShip.ShipDatabase("Sampledb1","Sampledb1_DR")
+$myShip.$BackupFileSelectionStrategy=[FileSelectionStrategy]::MinimumCount
