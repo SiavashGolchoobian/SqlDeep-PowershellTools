@@ -21,7 +21,7 @@ Class PrimaryRoleJobItem{
     [bool]$JobIsEnabledOnPrimary;
     [bool]$JobIsEnabledOnSecondary;
 
-    PrimaryRoleDatabaseItem([int]$JobId,[string]$JobName,[bool]$JobIsEnabled,[bool]$JobIsEnabledOnPrimary,[bool]$JobIsEnabledOnSecondary){
+    PrimaryRoleJobItem([int]$JobId,[string]$JobName,[bool]$JobIsEnabled,[bool]$JobIsEnabledOnPrimary,[bool]$JobIsEnabledOnSecondary){
         Write-Verbose 'PrimaryRoleJobItem object initializing started'
         $this.JobId=$JobId
         $this.JobName=$JobName
@@ -29,6 +29,32 @@ Class PrimaryRoleJobItem{
         $this.JobIsEnabledOnPrimary=$JobIsEnabledOnPrimary
         $this.JobIsEnabledOnSecondary=$JobIsEnabledOnSecondary
         Write-Verbose 'PrimaryRoleJobItem object initialized'
+    }
+}
+Class PrimaryRoleLoginItem{
+    [byte[]]$LoginId;
+    [string]$LoginName;
+    [string]$LoginScript;
+
+    PrimaryRoleLoginItem([byte[]]$LoginId,[string]$LoginName,[string]$LoginScript){
+        Write-Verbose 'PrimaryRoleLoginItem object initializing started'
+        $this.LoginId=$LoginId
+        $this.LoginName=$LoginName
+        $this.LoginScript=$LoginScript
+        Write-Verbose 'PrimaryRoleLoginItem object initialized'
+    }
+}
+Class DatabaseSecondaryReplicaItem{
+    [string]$DestinationInstance;
+    [int]$DestinationInstanceDbId;
+    [string]$DestinationInstanceDbName;
+
+    DatabaseSecondaryReplicaItem([string]$DestinationInstance,[int]$DestinationInstanceDbId,[string]$DestinationInstanceDbName){
+        Write-Verbose 'DatabaseSecondaryReplicaItem object initializing started'
+        $this.DestinationInstance=$DestinationInstance
+        $this.DestinationInstanceDbId=$DestinationInstanceDbId
+        $this.DestinationInstanceDbName=$DestinationInstanceDbName
+        Write-Verbose 'DatabaseSecondaryReplicaItem object initialized'
     }
 }
 Class AlwaysOnSync {
@@ -129,40 +155,65 @@ hidden [PrimaryRoleLoginItem[]] Get_PrimaryRoleLogins([string]$DatabaseName){   
     $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
 
     $myCommand="
-    DECLARE @myJobs XML
-    SET @myJobs=
-        (
-        SELECT 
-            CAST(CAST([myEP].[value] AS NVARCHAR(max)) AS XML) as Jobs 
-        FROM 
-            [" + $DatabaseName + "].[sys].[extended_properties] AS myEP WITH (READPAST)
-        WHERE 
-            myEP.class=0 and 
-            [myEP].[name]=N'_AlwaysOnJobs'
-        )
-
     SELECT 
-        [myJobs].[job_id] AS JobId,
-        [myXML].[Jobs].value('@name','nvarchar(255)') AS JobName,
-        --CAST([myJobs].[enabled] AS BIT) AS JobIsEnabled,
-        [myXML].[Jobs].value('@enabled_on_primary','bit') AS JobIsEnabledOnPrimary,
-        [myXML].[Jobs].value('@enabled_on_secondary','bit') AS JobIsEnabledOnSecondary
-    FROM
-        @myJobs.nodes('/jobs/job') myXML(Jobs)
-        INNER JOIN [msdb].[dbo].[sysjobs] AS myJobs WITH (READPAST) ON [myJobs].[name]=[myXML].[Jobs].value('@name','nvarchar(255)')
+        [myServerLogins].[sid],
+        [myServerLogins].[name],
+        [SqlDeep].[dbo].[dbafn_help_revlogin]([myServerLogins].[name]) AS LoginScript
+    FROM 
+        ["+$DatabaseName+"].[sys].[database_principals] AS myDatabaseLogins WITH (READPAST)
+        INNER JOIN [master].[sys].[server_principals] AS myServerLogins WITH (READPAST) ON [myServerLogins].[sid] = [myDatabaseLogins].[sid]
+    WHERE
+        [myDatabaseLogins].[type] IN ('S','U','G')
     "
 
     try{
         Write-Verbose $myCommand
         #$this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
-        $this.LogWriter.Write($this.LogStaticMessage+'Retrive list of job(s) related to database with primary role.',[LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+'Retrive list of login(s) related to database with primary role.',[LogType]::INF)
         [System.Data.DataRow[]]$myRecords=$null
         $myRecords=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
         if ($null -ne $myRecords){
-            [System.Collections.ArrayList]$myPrimaryRoleJobCollection=$null
-            $myPrimaryRoleJobCollection=[System.Collections.ArrayList]::new()
-            $myRecords|ForEach-Object{$myPrimaryRoleJobCollection.Add([PrimaryRoleJobItem]::New($_.JobId,$_.JobName,$_.JobIsEnabled,$_.JobIsEnabledOnPrimary,$_.JobIsEnabledOnSecondary))}
-            $myAnswer=$myPrimaryRoleJobCollection.ToArray([PrimaryRoleJobItem])
+            [System.Collections.ArrayList]$myPrimaryRoleLoginCollection=$null
+            $myPrimaryRoleLoginCollection=[System.Collections.ArrayList]::new()
+            $myRecords|ForEach-Object{$myPrimaryRoleLoginCollection.Add([PrimaryRoleLoginItem]::New([byte[]]$_.sid,$_.LoginName,$_.LoginScript))}
+            $myAnswer=$myPrimaryRoleLoginCollection.ToArray([PrimaryRoleLoginItem])
+        }
+    }Catch{
+        $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
+        $myAnswer.Clear()
+    }
+    return $myAnswer
+}
+hidden [DatabaseSecondaryReplicaItem[]] Get_DatabaseSecondaryReplicas([string]$DatabaseName){     #Get list of Replicas related to a primary database
+    $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+    [string]$myCommand=$null;
+    [PrimaryRoleJobItem[]]$myAnswer=$null;
+    $DatabaseName=Clear-SqlParameter -ParameterValue $DatabaseName -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+
+    $myCommand="
+    SELECT 
+        [myAR].[replica_server_name] AS [DestinationInstance],
+        [myDbReplStat].[database_id] AS [DestinationInstanceDbId],
+        Db_name([myDbReplStat].[database_id]) AS [DestinationInstanceDbName]
+    FROM
+        [master].[sys].[dm_hadr_database_replica_states] AS myDbReplStat WITH (READPAST)
+        INNER JOIN [master].[sys].[availability_replicas] AS myAR WITH (READPAST) ON [myDbReplStat].[replica_id] = [myAR].[replica_id]
+    WHERE
+        [myDbReplStat].[is_primary_replica]=0	--Secondary Role
+        AND Db_name([myDbReplStat].[database_id])='Framework'
+    "
+
+    try{
+        Write-Verbose $myCommand
+        #$this.LogWriter.Write($this.LogStaticMessage+$myCommand,[LogType]::INF)
+        $this.LogWriter.Write($this.LogStaticMessage+'Retrive list of login(s) related to database with primary role.',[LogType]::INF)
+        [System.Data.DataRow[]]$myRecords=$null
+        $myRecords=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $myCommand -OutputSqlErrors $true -QueryTimeout 0 -OutputAs DataRows -ErrorAction Stop
+        if ($null -ne $myRecords){
+            [System.Collections.ArrayList]$myPrimaryRoleLoginCollection=$null
+            $myPrimaryRoleLoginCollection=[System.Collections.ArrayList]::new()
+            $myRecords|ForEach-Object{$myPrimaryRoleLoginCollection.Add([PrimaryRoleLoginItem]::New([byte[]]$_.sid,$_.LoginName,$_.LoginScript))}
+            $myAnswer=$myPrimaryRoleLoginCollection.ToArray([PrimaryRoleLoginItem])
         }
     }Catch{
         $this.LogWriter.Write($this.LogStaticMessage+($_.ToString()).ToString(), [LogType]::ERR)
