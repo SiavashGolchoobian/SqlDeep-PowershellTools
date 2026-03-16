@@ -52,8 +52,6 @@ Class BackupFile {
     [string]$RemoteSourceFilePathReplaceNewValue=''
 
     BackupFile([string]$SourceServerName,[string]$FileRepositoryUncPath,[int]$StrategyNo,[int]$ID,[string]$DatabaseName,[int]$Position,[datetime]$BackupStartTime,[datetime]$BackupFinishTime,[decimal]$FirstLsn,[decimal]$LastLsn,[string]$BackupType,[int]$MediaSetId,[string]$FilePath,[string]$RemoteSourceFilePathReplaceOldValue,[string]$RemoteSourceFilePathReplaceNewValue){
-        $this.RemoteSourceFilePathReplaceOldValue=$RemoteSourceFilePathReplaceOldValue
-        $this.RemoteSourceFilePathReplaceNewValue=$RemoteSourceFilePathReplaceNewValue
         $this.StrategyNo=$StrategyNo
         $this.ID=$ID
         $this.DatabaseName=$DatabaseName
@@ -65,17 +63,21 @@ Class BackupFile {
         $this.BackupType=$BackupType
         $this.MediaSetId=$MediaSetId
         $this.FilePath=$FilePath
-        $this.RemoteSourceFilePath=$this.CalcRemoteSourceFilePath($SourceServerName,$this.RemoteSourceFilePathReplaceOldValue,$this.RemoteSourceFilePathReplaceNewValue)
+        $this.RemoteSourceFilePathReplaceOldValue=$RemoteSourceFilePathReplaceOldValue
+        $this.RemoteSourceFilePathReplaceNewValue=$RemoteSourceFilePathReplaceNewValue
+        $this.RemoteSourceFilePath=$this.CalcRemoteSourceFilePath($SourceServerName)
         $this.RemoteRepositoryUncFilePath=$this.CalcRemoteRepositoryUncFilePath($FileRepositoryUncPath)
     }
-    hidden [string]CalcRemoteSourceFilePath([string]$Server,[string]$RemoteSourceFilePathReplaceOldValue,[string]$RemoteSourceFilePathReplaceNewValue) {    #Converting local path to UNC path
+    hidden [string]CalcRemoteSourceFilePath([string]$Server) {    #Converting local path to UNC path
         Write-Verbose 'Processing Started.'
         [string]$myAnswer=$null
+        [string]$myUncPath=$null
+
         if ($this.FilePath.Contains('\\') -eq $false) { #Check if source file is located on a local drive or network path
-            if ($RemoteSourceFilePathReplaceOldValue -eq '') {  #Check if system need to Replace a Shared Folder name with Drive Letter$ Pathing
+            if ($this.RemoteSourceFilePathReplaceOldValue -eq '') {  #Check if system need to Replace a Shared Folder name with Drive Letter$ Pathing
                 $myUncPath='\\' + $Server + '\' + ($this.FilePath.Split(':') -Join '$')
             } else {
-                $myUncPath='\\' + $Server + '\' + $this.FilePath.Replace($RemoteSourceFilePathReplaceOldValue,$RemoteSourceFilePathReplaceNewValue)
+                $myUncPath='\\' + $Server + '\' + $this.FilePath.Replace($this.RemoteSourceFilePathReplaceOldValue,$this.RemoteSourceFilePathReplaceNewValue)
             }
             $myAnswer=$myUncPath
         }else {
@@ -91,23 +93,23 @@ Class BackupFile {
     }
 }
 Class DatabaseShipping {
-    [string]$SourceInstanceConnectionString
-    [string]$DestinationInstanceConnectionString
-    [string]$FileRepositoryUncPath
-    [int]$LimitMsdbScanToRecentHours=(31*24)
-    [string]$DataFolderRestoreLoation='DEFAULT'
-    [string]$LogFolderRestoreLoation='DEFAULT'
-    [bool]$RestoreFilesToIndividualFolders=$true
-    [DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY
-    [RestoreStrategy[]]$PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log
-    [bool]$SkipBackupFilesExistenceCheck=$false
-    [nullable[datetime]]$RestoreTo=$null
-    [FileSelectionStrategy]$BackupFileSelectionStrategy=[FileSelectionStrategy]::MinimumSize
-    [string]$RemoteSourceFilePathReplaceOldValue=''
-    [string]$RemoteSourceFilePathReplaceNewValue=''
-    hidden [LogWriter]$LogWriter
-    hidden [string]$LogStaticMessage=''
-    hidden [BackupFile[]]$BackupFileList=$null  #This property used to return list of all selected backup files to module consumers, This property should not be used for producation usage inside this module because it's writeable for outsiders
+    [string]$SourceInstanceConnectionString;
+    [string]$DestinationInstanceConnectionString;
+    [string]$FileRepositoryUncPath;
+    [int]$LimitMsdbScanToRecentHours=(31*24);
+    [string]$DataFolderRestoreLoation='DEFAULT';
+    [string]$LogFolderRestoreLoation='DEFAULT';
+    [bool]$RestoreFilesToIndividualFolders=$true;
+    [DatabaseRecoveryMode]$DestinationRestoreMode=[DatabaseRecoveryMode]::RESTOREONLY;
+    [RestoreStrategy[]]$PreferredStrategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog,[RestoreStrategy]::DiffLog,[RestoreStrategy]::Log;
+    [bool]$SkipBackupFilesExistenceCheck=$false;
+    [nullable[datetime]]$RestoreTo=$null;
+    [FileSelectionStrategy]$BackupFileSelectionStrategy=[FileSelectionStrategy]::MinimumSize;
+    [string]$RemoteSourceFilePathReplaceOldValue='';
+    [string]$RemoteSourceFilePathReplaceNewValue='';
+    hidden [LogWriter]$LogWriter;
+    hidden [string]$LogStaticMessage='';
+    hidden [BackupFile[]]$BackupFileList=$null;  #This property used to return list of all selected backup files to module consumers, This property should not be used for producation usage inside this module because it's writeable for outsiders
 
     DatabaseShipping(){
 
@@ -1636,8 +1638,8 @@ Export-ModuleMember -Function New-DatabaseShipping
 # SIG # Begin signature block
 # MIIcAgYJKoZIhvcNAQcCoIIb8zCCG+8CAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCB1RxJFJ4CiiDzH
-# OF8WKOKl/uJx97AeaDxSlewpIxlKfqCCFlIwggMUMIIB/KADAgECAhAT2c9S4U98
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDSAs2w9Y1fTgKK
+# q/xAa1PWVO0sO46AEPCjrg+SFFDdzaCCFlIwggMUMIIB/KADAgECAhAT2c9S4U98
 # jEh2eqrtOGKiMA0GCSqGSIb3DQEBBQUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
 # MB4XDTI0MTAyMzEyMjAwMloXDTI2MTAyMzEyMzAwMlowFjEUMBIGA1UEAwwLc3Fs
 # ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDivSzgGDqW
@@ -1760,28 +1762,28 @@ Export-ModuleMember -Function New-DatabaseShipping
 # A1UEAwwLc3FsZGVlcC5jb20CEBPZz1LhT3yMSHZ6qu04YqIwDQYJYIZIAWUDBAIB
 # BQCggYQwGAYKKwYBBAGCNwIBDDEKMAigAoAAoQKAADAZBgkqhkiG9w0BCQMxDAYK
 # KwYBBAGCNwIBBDAcBgorBgEEAYI3AgELMQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG
-# 9w0BCQQxIgQggu63OHAtpFVoVsXezMcE1hHDTzzBkmUHROGzCtqfaSowDQYJKoZI
-# hvcNAQEBBQAEggEAFvTtrm9WruRBSby5eSWoY2t5ucdxRr7n5y0x6bAD5T691AVd
-# GOY/1j9xAnDxnJwpwWdl8yYyYIGvV3Fwmc4S7iWqhs5+A/nlYnO01OkA0f0xnMEz
-# QNj+NIbxPxBUqlbRQoHo4Sq4Yvl3+gA18S7BbZqj6mdDbuL5x074BOiN/XNoinir
-# fNG4R4k4N2vo76y0buP5UlJKESj9iVv0P7APpOK0jYJa2BlzcSj+q8WYvt72lr0n
-# g6+n9gnrgCwcnavHid9H6LGbgFWRrN4KNj9lDy65reaCkEQEyns2pNjO1L2FlDc1
-# KDAfsfMtUZCmHCF8u4mmOi9pvVYIs5KFW8I1daGCAyYwggMiBgkqhkiG9w0BCQYx
+# 9w0BCQQxIgQg8EUhw287x3F6PkT6iQ1bnTg7OqBg6AxPaDkq16WJ6nkwDQYJKoZI
+# hvcNAQEBBQAEggEAQn31En+O6EKf1gLm1YDZMSjFUaHSiN3hOAhc+tSsdKbFbC5/
+# uRHRmlV+y+UnHnfmkbZR/RODOx1jLsobNe7a4or1B9YueBeSIV5XJT0TJ6nK3PAV
+# s/t2VrLTLV4sziRxx+EkKT5a1Mj2yy7bJXLcjmWyzzxfwT0Q+Htd6lfgYJKZmEpk
+# qVTfWG7sTlGl8vdSYAs98JWx/LhmR1I3tV59IagH35SDwdKbLzewoR0IhUEaMhRH
+# IY8BiBBWT/58jIK65F2/U4b6N2M9kZpc/EfjLeI1slp5K26szdL4q/9CmOZnZwa2
+# X0+33pEChJy+kJ7cymYEey5qwUSbZm3R0jcHzaGCAyYwggMiBgkqhkiG9w0BCQYx
 # ggMTMIIDDwIBATB9MGkxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwg
 # SW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQgVHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcg
 # UlNBNDA5NiBTSEEyNTYgMjAyNSBDQTECEAqA7xhLjfEFgtHEdqeVdGgwDQYJYIZI
 # AWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMxCwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJ
-# BTEPFw0yNjAzMTYxMjQ1MDlaMC8GCSqGSIb3DQEJBDEiBCDltRW2MSOaYVVlMNZX
-# oO4cTs0liR16mxedafsP2uRWmTANBgkqhkiG9w0BAQEFAASCAgCz+BRo9EvBVzwi
-# 2se1l/mSGjJh4NS+cmlc6ssaalMq35GWTG0sEN0qduEP3DK0XWsMyMHyV3/09Pa7
-# vNpMAU+t5jgG593mfY3hd+GATyimeKV9KrQeXR3qyPFH/3mmt3hrtdyRHV+UrMj2
-# /0Whs0ksy32R7PEodiQrlQdTMeKb6Ub/AVLagBnUZu+ptVOE06QYR5TQrAAF9qFT
-# Enqj+1p8Y+pbrmUeZ8DSwRCW8831vaZVLTclQmpU5hv7UQ4KF+4dIoZKOSdiKRic
-# mxJdz1vppj6IYHmvumNZLR7kdD3O0QlyuR5vooFWKGRUfkctHsE36orFabX5eRdN
-# vlOPJzZyG6Xt2NTgJe7n9pBmHC0xjBRWqm1RhHZcE5zIJnT3EReRGmaWmqa/WOv2
-# HO8epFkpj9FnVtOP9BI6HycuOUxXsDM2/yJmj0QEWFbkbKrabRgb1CQ1gNoxdoMJ
-# G8ZHx5FQUooSLBLBF7n1UWuxfLnL3mx4YnS2D2j32uV015pUeP0mmfOGLKBy6NUa
-# IKA0rRKeIxaPBhLKfYX9PRhjR2TyoPSM9ood0e9e5GMLptEeHKbQvlOKWq4L4vLf
-# cNe8KBOVIrtiXk3JbRbGU78n6uVCHXRQjvAxY/e0tkjwKYK8rh93R2y99GEVFd89
-# 50F/eIK+N5M4ePDfyeQgO0d/rx0+8w==
+# BTEPFw0yNjAzMTYxNTE3NTZaMC8GCSqGSIb3DQEJBDEiBCC/WNFZ5M1KEzeYWI8w
+# R6adN0MNOEMcVShiGqPGyp6xfTANBgkqhkiG9w0BAQEFAASCAgDNQF7Wr/q2Dw7h
+# jrsf7wz5ZYX1arwQwAoYXmEU4hnl4Gt/4NnN6VjZuyK6retLdz2xzOKQIpI/4VCg
+# 8oDxlawr1y5WRtN88AxPk8V8boeRnD8mlq6imA8DmT6T4eNTKJACNfUiiU6pi51N
+# K8I8pPMqkVrLX+A/NOeIoNhEcHF4CkNrNF2w/V1ei2TR7otBWVnqKTTVfVIpa8SP
+# CxQcO7VX0/+ZSvq1bjl+NktgixDZdJTCsX+jC1FNw5ucB+j6djoh/5CJ49YpdeCt
+# rXSQ4Si3xMrduzw7ui4cMX3g2tvuz/NL9AoJ/xrG3BsfLMP4/9u+/AK4T+QmVVJR
+# XHfG3ODQvCOJTuBfP3INxZTnsn58iJqLeuAcgWn3yjUNRS0mnRdeyv/srNiyLvPP
+# z9AJWJuaXtCmqMkL+GjLBbz6GNhLaPgxAXoxB9K/O/Y91Hvz/T8VZR/eSlZtue0v
+# dLOGUssV33dkAulcAHeo5oYtF1kz2wVC6qng4FSt/2JeZLKZr9bE9Eh8OjydYYup
+# +2+yRQBwFX6QMBID+T4TSxYTBtawF54a8LBU3EsrS26GDphKSZnZWg5TotgxjQdZ
+# D+cmbCrQ75VBFRrqTTLfOoZWBRuK+vM3dALCZTxBnw5+PoYHTB8RFDyyXXrhi1+7
+# dVYppD6kOR5pjelkd0ryN8udtmeXpg==
 # SIG # End signature block

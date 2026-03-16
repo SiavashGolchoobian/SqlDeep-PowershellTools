@@ -167,3 +167,22 @@ $myBackupShipping.Set_DestinationCredential($myCredential)
 $myBackupShipping.Delete_DepricatedBackupsOfSourceServer()   #Delete all deprecated files related to current instance
 #OR
 $myBackupShipping.Delete_DepricatedBackupsOfAllServers()   #Delete all deprecated files of all servers
+
+#--Sample #9:   Use Direct username and password then shipp files to destination
+#           Also because in this sample we dont have access to source server volume$ name (like \\SourceSrvr\U$\Databases\Backup\...) then we share "Backup" folder
+#           and add our middleware agent user (with same user and password on both side) and with specifing "RemoteSourceFilePathReplaceOldValue" parameter and
+#           "RemoteSourceFilePathReplaceNewValue" paramter to replace 'U:\Databases\Backup' value with 'Backup' shared folder name, in this way our job 
+#           use \\SourceSrvr\Backup\... path instead of volume$ style \\SourceSrvr\U$\Databases\Backup\... path
+$myBackupShipping=[BackupShipping]::New('Data Source=DB-C1-DLV01.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=Tempdb;Integrated Security=True;TrustServerCertificate=True;Encrypt=True',$myDatabases,[DestinationType]::SCP,'172.20.50.20','/bk_sql/test/{CustomRule01}/{CustomRule02(J)}/{ServerName}_{InstanceName}',$myLogWriter)
+$myBackupShipping.BackupTypes=([BackupType]::FULL,[BackupType]::DIFF,[BackupType]::LOG)
+$myBackupShipping.HoursToScanForUntransferredBackups=72
+$myBackupShipping.SshHostKeyFingerprint='ssh-ed25519 256 xEkJwBAimRr3rfS3Hm+dnKc5lSTABvDUntt+itokHPw='
+$myBackupShipping.ActionType=[ActionType]::Copy
+$myBackupShipping.RetainDaysOnDestination='CustomRule01'
+$myBackupShipping.TransferedFileDescriptionSuffix='Transfereds'
+$myBackupShipping.BackupShippingCatalogTableName='TransferredFiles'
+$myBackupShipping.WinScpPath='C:\WinSCP\WinSCPnet.dll'
+$myBackupShipping.Set_DestinationCredential('sqldeepbackup','Str0ngP@$$W0rd')
+$myShip.RemoteSourceFilePathReplaceOldValue='U:\Databases\Backup'
+$myShip.RemoteSourceFilePathReplaceNewValue='Backup'
+$myBackupShipping.Transfer_Backup()

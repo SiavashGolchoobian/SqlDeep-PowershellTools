@@ -44,7 +44,7 @@ $myShip.$BackupFileSelectionStrategy=[FileSelectionStrategy]::MinimumCount
 #           Also because in this sample we dont have access to source server volume$ name (like \\SourceSrvr\U$\Databases\Backup\...) then we share "Backup" folder
 #           and add our middleware agent user (with same user and password on both side) and with specifing "RemoteSourceFilePathReplaceOldValue" parameter and
 #           "RemoteSourceFilePathReplaceNewValue" paramter to replace 'U:\Databases\Backup' value with 'Backup' shared folder name, in this way our job 
-#            use \\SourceSrvr\Backup\... path instead of volume$ style \\SourceSrvr\U$\Databases\Backup\... path
+#           use \\SourceSrvr\Backup\... path instead of volume$ style \\SourceSrvr\U$\Databases\Backup\... path
 [string]$ExcludedList="SqlDeep,Sampledb3"
 [string]$Prefix=""
 [string[]]$myExcludedList=$null
