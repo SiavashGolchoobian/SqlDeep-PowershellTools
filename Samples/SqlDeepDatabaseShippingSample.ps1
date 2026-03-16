@@ -39,3 +39,16 @@ $myShip.DataFolderRestoreLoation="F:\Data02\Databases\Data"
 $myShip.LogFolderRestoreLoation="F:\Log02\Databases\Data"
 $myShip.ShipDatabase("Sampledb1","Sampledb1_DR")
 $myShip.$BackupFileSelectionStrategy=[FileSelectionStrategy]::MinimumCount
+
+#Sample8:   Restore all user database except "SqlDeep","Sampledb3" to destination in norecovery mode also it tryies to use only Log files restoration if possible
+#           Also because in this sample we dont have access to source server \\SourceSrvr\U$\Databases\Backup\... we share it's "Backup" folder for our middleware agent user and 
+#           then replace 'U:\Databases\Backup' value with 'Backup' shared folder name, in this way out job use \\SourceSrvr\Backup\... instead of \\SourceSrvr\U$\Databases\Backup\...
+[string]$ExcludedList="SqlDeep,Sampledb3"
+[string]$Prefix=""
+[string[]]$myExcludedList=$null
+if ($null -ne $ExcludedList -and $ExcludedList.Trim().Length -gt 0){$myExcludedList=$ExcludedList.Split(",")}else{$myExcludedList=$null}
+$myShip.SkipBackupFilesExistenceCheck=$true                #Don't check backup file existence on source (because of performance penalty)
+$myShip.PreferredStrategies=[RestoreStrategy]::Log
+$myShip.RemoteSourceFilePathReplaceOldValue='U:\Databases\Backup'
+$myShip.RemoteSourceFilePathReplaceNewValue='Backup'
+$myShip.ShipAllUserDatabases($Prefix,$myExcludedList)
