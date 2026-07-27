@@ -41,4 +41,10 @@ $myDatabaseTest.TestFromRegisterServer($ExcludedInstanceList,$ExcludedDatabaseLi
 
 #>
 
-
+#Sample 4 :
+$myDatabaseTest=New-DatabaseTest -SourceInstanceConnectionString "Data Source=DB-MN-DLV02.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -DestinationInstanceConnectionString "Data Source=DB-BK-DBV02.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True" -LogWrite $myLogWriter -BackupTestCatalogTableName "BackupTestResult" -FileRepositoryUncPath "\\DB-BK-DBV02\U$\Databases\Backup"
+[string[]]$ExcludedDatabaseList = "SSISDB","SqlDeep","DWQueue","DWDiagnostics","DWConfiguration"
+[string]$ConnectionStringQuery = "SELECT CONCAT('Data Source=',ServerIP,';Initial Catalog=master;Integrated Security=True;TrustServerCertificate=True;Encrypt=True') AS ConnectionString FROM master.dbo.myServersList"
+$myDatabaseTest.SkipBackupFilesExistenceCheck=$true
+$myDatabaseTest.LimitMsdbScanToRecentHours=120
+$myDatabaseTest.TestFromQueryResult($ConnectionStringQuery,$ExcludedDatabaseList)

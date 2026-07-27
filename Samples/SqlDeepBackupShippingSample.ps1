@@ -183,6 +183,6 @@ $myBackupShipping.TransferedFileDescriptionSuffix='Transfereds'
 $myBackupShipping.BackupShippingCatalogTableName='TransferredFiles'
 $myBackupShipping.WinScpPath='C:\WinSCP\WinSCPnet.dll'
 $myBackupShipping.Set_DestinationCredential('sqldeepbackup','Str0ngP@$$W0rd')
-$myShip.RemoteSourceFilePathReplaceOldValue='U:\Databases\Backup'
-$myShip.RemoteSourceFilePathReplaceNewValue='Backup'
+$myBackupShipping.RemoteSourceFilePathReplaceOldValue='U:\Databases\Backup'
+$myBackupShipping.RemoteSourceFilePathReplaceNewValue='Backup'
 $myBackupShipping.Transfer_Backup()

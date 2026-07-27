@@ -244,6 +244,17 @@ hidden Init ([string]$BackupTestCatalogTableName)
             $this.TestAllDatabases($ExcludedDatabaseList)
         }
     }
+    [void] TestFromQueryResult([string]$ConnectionStringQuery,[string[]]$ExcludedDatabaseList){
+        $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
+        [System.Data.DataRow[]]$myServerList=$null
+        $myServerList=Invoke-Sqlcmd -ConnectionString $this.SourceInstanceConnectionString -Query $ConnectionStringQuery -OutputSqlErrors $true -QueryTimeout 0 -ErrorAction Stop
+        if ($null -ne $myServerList) {
+            foreach ($myServer in $myServerList){
+                $this.SourceInstanceConnectionString=$myServer.ConnectionString
+                $this.TestAllDatabases($ExcludedDatabaseList)
+            }
+        }
+    }
     [void] TestDatabase([string]$DatabaseName){
         $this.LogWriter.Write($this.LogStaticMessage+'Processing Started.', [LogType]::INF)
         #Set Constr
