@@ -292,6 +292,7 @@ hidden Init ([string]$BackupTestCatalogTableName)
             }
 
             #Determine database is not in simple recovery model
+            $this.LogWriter.Write($this.LogStaticMessage+'Validate Source database recovery model.',[LogType]::INF)
             $myCommand = "
             SELECT CAST(
                 CASE WHEN EXISTS (
@@ -306,6 +307,8 @@ hidden Init ([string]$BackupTestCatalogTableName)
             if ($myDatabaseIsValid -eq $false) {
                 $this.LogWriter.Write($this.LogStaticMessage+'Source server database is in simple recovery model.',[LogType]::ERR)
                 throw 'Source server database is in simple recovery model.'
+            }else{
+                $this.LogWriter.Write($this.LogStaticMessage+'Source server database is not in simple recovery model.',[LogType]::INF)
             }
 
             #Determine restoresd server
@@ -465,8 +468,8 @@ Export-ModuleMember -Function New-DatabaseTest
 # SIG # Begin signature block
 # MIIb6gYJKoZIhvcNAQcCoIIb2zCCG9cCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCIuXJPr/QkWTvn
-# Eg6xm/iPz6iOVf/bST85zJV+3oEsCaCCFjowggL8MIIB5KADAgECAhBuGGiP9rFT
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCBPdgOOE5jnojHt
+# 54QaCZnBma2GLl52CIBh6gM/gBBLdqCCFjowggL8MIIB5KADAgECAhBuGGiP9rFT
 # sEjfxjEo89WdMA0GCSqGSIb3DQEBCwUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
 # MB4XDTI2MDcyODEyMjQ1MVoXDTI3MDcyODEyNDQ1MVowFjEUMBIGA1UEAwwLc3Fs
 # ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDNOXX1vdSL
@@ -588,28 +591,28 @@ Export-ModuleMember -Function New-DatabaseTest
 # QPT9gzGCBQYwggUCAgEBMCowFjEUMBIGA1UEAwwLc3FsZGVlcC5jb20CEG4YaI/2
 # sVOwSN/GMSjz1Z0wDQYJYIZIAWUDBAIBBQCggYQwGAYKKwYBBAGCNwIBDDEKMAig
 # AoAAoQKAADAZBgkqhkiG9w0BCQMxDAYKKwYBBAGCNwIBBDAcBgorBgEEAYI3AgEL
-# MQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQg9bCuMMDBy7y6gwds/Nhf
-# Ksri5rbH4YSBZnH6r69MibgwDQYJKoZIhvcNAQEBBQAEggEALc/9H2F5IzNv+SoW
-# H37evYYQs9ctPdrUWqQmvF7z0qYMGqplvX8O5Mur2/xNjbe3lmJxQgy+FPoEBCK3
-# eM0sCkbS1p3mRrFgDOliXC6A2sQzT1nZISGWNGmAmJ+Y5KHvRGtVv8yhYyPj8g7U
-# vJG2X2/OwVj92b7h+UOiujHyVSyVDvzaKfWbTYzkLPRXaDXIQO259Rn5W+PxrlDg
-# cp/J3o/btecZA9Y7+ZJZ3i9J2MjCMlmtw83BHr/AdtNQ1brM6DvFwMkUafW0OuR/
-# 0ZCjrnfAtUuAgVA9PD23/P9ff8YqVsRxU0ARQdVUJQyZ5nU7hyK34KK79z/UM2j6
-# 0xxidaGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
+# MQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQgH8qQUxLBLybQAf1fj0G+
+# ymEQcg3M13Ch5alMJahUSc0wDQYJKoZIhvcNAQEBBQAEggEAXpxgRK4M9KXVjw4R
+# DxhrG3ta59IRohkgA7l/uK3Vjb1Xr2KjTSp+m9EVb9RrohoA8r9Yyrw0eB3W+Y1D
+# yr5t/AlobOlDETzj7dkRIdBubo6kfOSTvJ1hfbBdkh4i3nVu7T10LC+RVw1k3c17
+# j6CIOuAuGFA2jKpXnra6ozvCVMkpO5UEgiOnAfyWnaJs3vNAOATHPDJOXV9Irnt0
+# ZJLhyiOJAVVDfMMJm7pjoJ7i08HyzNqg/O7r5hmpsMoeaHZgQpHR2NU1p4TtsagC
+# jPk9zeahaykgN31DEPBnWFnRldtoj3D0mGfVYQZGxHjTsljCwLRyGePJUw7ZaT13
+# Z2DawqGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
 # AlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQg
 # VHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYgMjAyNSBDQTEC
 # EAhP3DNPfkVO28MPj/mSGDUwDQYJYIZIAWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMx
-# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjEwMDQxMzA3MjFaMC8GCSqG
-# SIb3DQEJBDEiBCD45cJDKLE/lNgHXoKXvZQs93KxXhDcKs/lnUazx+keLDANBgkq
-# hkiG9w0BAQEFAASCAgAqzcj7AU37zNqbGeZybvss+yAJbpGVNJndO6Zg6geBrrA0
-# Az/N846utIFv7h3Dj/+Z+2mOy1zWQ8l4XIkS47vPJKRyvfCN7dJwP98NKizOR5ia
-# IWbFdF3cVPm9o8y9/apbN7eXRxzmNN8t8U+sLEMTFUAMiSU7BWzw8emQkOcYCdVd
-# JCjLx6YipjjZTuSWslOq5Z3HWTwjzO1BW4H8nH/aWS42OSW0tY/T7dQrBto/wyE2
-# iOZNDnp1u5h0jXsLnm9zkkjjzQRdjsonpbpUdkF2cIU0i/8VKivUBEupK09ldATV
-# axh/vOjUciHL7tyBHzRJ1Gp1FQDsD+sn/rjxk5qDH5GyhdUBU+k982qkjbHvNZZr
-# +CYiEfDj7VrpFpLOKs5l8Uj2CBcAl6ljJk1NlIhu8kAO4Ik7w1tCS0nTaYM3VItH
-# 5NJUB5JQMtVPRu5utJDRxYdwI+EWt0/jBdnQHBW0SGT9pO+fTIh99YUEZnJfQwFD
-# iibWyxYQ/amoqh+2tXtBVZUGhB/4sqelIRwkVKvRsjK2Oxw4xdSw+KlPAKhqx4dx
-# r/rlilCN54I492f2p+ZNBpHlxTG0xykCve//qH0U/w1Tbv7Jy1EYjVwKaqSkDK/G
-# Z4xLTFaPzEMhwEnWaqOyc+cDijoKlctrhM3IOm7zsjwEELZu3lBm4LlSoyzg/g==
+# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjEwMDQxMzQyNTRaMC8GCSqG
+# SIb3DQEJBDEiBCAZy5WNmZUvotG08qHvJcL+yd0Psu3MOVmVKvlD7wk77DANBgkq
+# hkiG9w0BAQEFAASCAgBOwEsS7qTMoeDii8P6xOnAlzszUAAphuU6enznWEOyf1oE
+# KLNPOcx6cUVrjT0FEbOs2vhMcJhKd5Z4pwfBbihuyNqGnXt2p4AbMXHlicvsPeN0
+# K8ZRoPNblVJ3Bj56qyTY6WHBNGZcsjgDvzRnIi2ShB+29PDKVgtNxCbA8J1lK6NJ
+# 3gjxxPurc0uP8+mFXcaT7hCStCPgP9gf5rWXFNzUNWwD0Lk8zb0Jjx6oWR+ZgMBc
+# PT0MTWkPkeS2tIzBaGegY6+Iqn7s+Y2+19H3XxhfRkFXDhLy81bawudpG6FNvW1d
+# DXt0TwghjUj28MrjvTojV9l1zP1RZ7Hn0m1xd1qcYBB4ztes4swdCeK/usOlFVoO
+# e3eI5wU1DybZ2BjGiWvy5wkqTIPHqkEzizAhRMhpePIO9Z0c+Czcxm1aiYjUmPod
+# DjVRiO5KmQzPIo9noV7PCPliSRIvxb9r+1qwXjrLns6FII6lcqRGZtee8JY48Dk4
+# wT2P0q9GHZi6gQL5RtAlptkAzvP9qABkWo9qhCDsHTZ1LmQmLDexccOyTYcQ+5hH
+# 0qXZiAzYDNjUC3/WqIk3UqIhf7vLCfaOTtP0WtrPCxg2k5A8KTSEsn+DrHvZRzb6
+# FZD4/Ms2AKZeXHK7zXJqIZ6dEssnm9h6+BTlK5aQK3T4qOxf/58C5Uhr4Zd8gg==
 # SIG # End signature block
