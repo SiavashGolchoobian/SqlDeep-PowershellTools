@@ -25,6 +25,7 @@ enum RestoreStrategy {
     FullLog = 2
     DiffLog = 3
     Log = 4
+    Full = 5
 }
 enum FileSelectionStrategy {
     MinimumSize = 0
@@ -247,7 +248,7 @@ Class DatabaseShipping {
         [string]$myAcceptedStrategies=$null
         if ($LatestLSN -eq 0 -and $DiffBackupBaseLsn -eq 0){    #In this case Diff and Log backups are not usable and we should use strategies containes Full backup files
             $Strategies = $this.PreferredStrategies | Where-Object -Property value__ -NotIn ( ([RestoreStrategy]::DiffLog).value__ , ([RestoreStrategy]::Log).value__ ) #Removing any non-full backup strategies from list
-            if (!($Strategies -contains [RestoreStrategy]::FullDiffLog) -and !($this.PreferredStrategies -contains [RestoreStrategy]::FullLog)){    #Add all full backup strategies to the list, if there is not atleast one full backup strategy found in the list
+            if (!($Strategies -contains [RestoreStrategy]::FullDiffLog) -and !($this.PreferredStrategies -contains [RestoreStrategy]::FullLog) -and !($this.PreferredStrategies -contains [RestoreStrategy]::Full)){    #Add all full backup strategies to the list, if there is not atleast one full backup strategy found in the list
                 $Strategies=[RestoreStrategy]::FullDiffLog,[RestoreStrategy]::FullLog
             }
             $myAcceptedStrategies=$this.Get_StrategiesToString($Strategies)
@@ -1048,6 +1049,91 @@ Class DatabaseShipping {
         ELSE
             DELETE FROM #myResult WHERE StrategyNo=4
         --========================================
+        --========================================5th strategy: All latest existed full backup
+        --========================================
+        ----------------------Step5.1:	Extract all existed full backups
+            TRUNCATE TABLE #myResult
+            INSERT INTO #myResult (DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, CheckpointLsn, DatabaseBackupLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, IsContiguous)
+            SELECT
+                [myDatabase].[name] AS DatabaseName,
+                [myBackupset].[position],
+                [myBackupset].[backup_start_date],
+                [myBackupset].[backup_finish_date],
+                [myBackupset].[first_lsn],
+                [myBackupset].[last_lsn],
+                [myBackupset].[checkpoint_lsn],
+                [myBackupset].[database_backup_lsn],
+                [myBackupset].[type],
+                [myBackupset].[media_set_id],
+                [myMediaIsAvailable].[BackupFileCount],
+                ISNULL([myBackupset].[compressed_backup_size],[myBackupset].[backup_size])/(1024*1024) AS BackupFileSizeMB,
+                CAST(5 AS tinyint) AS StrategyNo,
+                1 AS IsContiguous
+            FROM
+                [master].[sys].[databases] AS myDatabase WITH (READPAST)
+                INNER JOIN [msdb].[dbo].[backupset] AS myBackupset WITH (READPAST) ON [myBackupset].[database_name] = [myDatabase].[name]
+                INNER JOIN (
+                    SELECT
+                        [myBackupFamily].[media_set_id],
+                        Count(1) AS BackupFileCount,
+                        "+$myBackupFileExistenceCheckCommand+"
+                    FROM
+                        [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST)
+                    GROUP BY
+                        [myBackupFamily].[media_set_id]
+                    ) AS myMediaIsAvailable ON [myMediaIsAvailable].[media_set_id] = [myBackupset].[media_set_id]
+            WHERE 
+                [myBackupset].[last_recovery_fork_guid] = @myLatestRecoveryFork
+                AND [myBackupset].[is_copy_only] = 0
+                AND [myDatabase].[name] = @myDBName
+                AND [myBackupset].[type] = 'D'
+                AND [myBackupset].[backup_finish_date] IS NOT NULL
+                AND [myBackupset].[backup_start_date] >= @myLowerBoundOfFileScan
+                AND (CASE WHEN @myRestoreToLatestFullBackupsetId IS NULL THEN 0 ELSE [myBackupset].[backup_set_id] END) <= (CASE WHEN @myRestoreToLatestFullBackupsetId IS NULL THEN 0 ELSE @myRestoreToLatestFullBackupsetId END)
+                AND [myMediaIsAvailable].[IsFilesExists]=1
+                AND ( /*@myIsFullBackupStrategyForced=1 OR*/ 5 IN (" + $myAcceptedStrategies + "))
+            
+            INSERT INTO #myFileExistCache (MediaSetId, IsFilesExists) SELECT MediaSetId, 1 FROM #myResult   --Update Cache
+        ----------------------Step5.2:	Generate Roadmaps
+        IF EXISTS (SELECT COUNT(1) FROM #myResult WHERE StrategyNo=5)
+        BEGIN
+            ;With myStrategy5 AS (
+                SELECT	--FullBackups
+                    [myFullBackups].*,
+                    CAST(NULL AS INT) AS [ParentID],
+                    CAST(1 AS INT) AS [Level],
+                    CAST([myFullBackups].[BackupFileSizeMB] AS REAL) AS Cost
+                FROM 
+                    #myResult AS myFullBackups
+                WHERE 
+                    [myFullBackups].[StrategyNo]=5 AND [myFullBackups].[BackupType]='D'
+                )
+        
+            INSERT INTO #myRoadMaps (ID, DatabaseName, Position, BackupStartTime, BackupFinishTime, FirstLsn, LastLsn, BackupType, MediaSetId, BackupFileCount, BackupFileSizeMB, StrategyNo, ParentID, [Level], Cost)
+            SELECT ID,DatabaseName,Position,BackupStartTime,BackupFinishTime,FirstLsn,LastLsn,BackupType,MediaSetId,BackupFileCount,BackupFileSizeMB,StrategyNo,ParentID,[Level],Cost FROM myStrategy1 ORDER BY [Level],[ParentID],[ID]
+        
+			INSERT INTO #mySolutions (LogID, DiffID, FullID, RoadmapStartTime, RoadmapFinishTime, RoadmapFirstLsn, RoadmapLastLsn, RoadmapSizeMB, RoadmapFileCount, StrategyNo)
+			SELECT 
+				NULL AS LogID,
+				NULL AS DiffID,
+				[myFull].[ID] AS FullID,
+				[myFull].[BackupStartTime],
+				[myFull].[BackupFinishTime],
+				[myFull].[FirstLsn],
+				[myFull].[LastLsn],
+				[myFull].[Cost],
+				[myFull].[BackupFileCount],
+				[myFull].[StrategyNo]
+			FROM 
+				#myRoadMaps AS myFull
+			WHERE 
+				[myFull].[BackupType]='D'
+				AND [myFull].[StrategyNo]=5
+            UPDATE mySolutions SET RoadmapFileCount=[mySolutions].[RoadmapFileCount] FROM #mySolutions AS mySolutions WHERE [mySolutions].[StrategyNo]=5
+        END
+        ELSE
+            DELETE FROM #myResult WHERE StrategyNo=5
+        --========================================
         --========================================Elect and show best solution strategy based on possible solutions cost(cost is equal to total size of reuired files in MB->RoadmapSizeMB)
         --========================================
         DECLARE @myStrategyNo TINYINT
@@ -1056,7 +1142,10 @@ Class DatabaseShipping {
         DECLARE @myLogID INT
         
         --SELECT * FROM #mySolutions ORDER BY [RoadmapSizeMB], [RoadmapFileCount]
-        SELECT TOP 1 @myStrategyNo=StrategyNo,@myFullID=FullID,@myDiffID=DiffID,@myLogID=LogID FROM #mySolutions ORDER BY "+$myBackupFileSelectionStrategyCommand+"
+        --5th Solution is not acceptable in regular scenarios then we use it only if does not have any other backup combinations
+        SELECT TOP 1 @myStrategyNo=StrategyNo,@myFullID=FullID,@myDiffID=DiffID,@myLogID=LogID FROM #mySolutions WHERE StrategyNo<>5 ORDER BY "+$myBackupFileSelectionStrategyCommand+"
+        IF @myStrategyNo IS NULL
+            SELECT TOP 1 @myStrategyNo=StrategyNo,@myFullID=FullID,@myDiffID=DiffID,@myLogID=LogID FROM #mySolutions WHERE StrategyNo=5 ORDER BY "+$myBackupFileSelectionStrategyCommand+"
         
         SELECT
             [myElectedBackupsets].[StrategyNo],
@@ -1109,6 +1198,14 @@ Class DatabaseShipping {
                 @myStrategyNo=4
                 AND StrategyNo=4
                 AND BackupType='L'
+            UNION ALL
+            SELECT * FROM #myRoadMaps
+            WHERE
+                @myStrategyNo=5
+                AND StrategyNo=5
+                AND (
+                    BackupType='D' AND ID=@myFullID AND ParentID IS NULL
+                    )
             ) AS myElectedBackupsets
             INNER JOIN [msdb].[dbo].[backupmediafamily] AS myBackupFamily WITH (READPAST) ON [myBackupFamily].[media_set_id] = [myElectedBackupsets].[MediaSetId]
         ORDER BY 
@@ -1474,7 +1571,7 @@ Class DatabaseShipping {
             }
 
             #--=======================Drop not in restoring mode databases
-            If ($myDestinationDbStatus -eq [DestinationDbStatus]::Online -or $myRestoreStrategy -eq [RestoreStrategy]::FullDiffLog -or $myRestoreStrategy -eq [RestoreStrategy]::FullLog){
+            If ($myDestinationDbStatus -eq [DestinationDbStatus]::Online -or $myRestoreStrategy -eq [RestoreStrategy]::FullDiffLog -or $myRestoreStrategy -eq [RestoreStrategy]::FullLog -or $myRestoreStrategy -eq [RestoreStrategy]::Full){
                 $this.LogWriter.Write($this.LogStaticMessage+('Drop Database : ' + $DestinationDB),[LogType]::INF)
 
                 $myExistedDestinationDbDropped=$this.Database_DropDatabase($this.DestinationInstanceConnectionString,$DestinationDB)
@@ -1636,154 +1733,153 @@ Export-ModuleMember -Function New-DatabaseShipping
 #endregion
 
 # SIG # Begin signature block
-# MIIcAgYJKoZIhvcNAQcCoIIb8zCCG+8CAQExDzANBglghkgBZQMEAgEFADB5Bgor
+# MIIb6gYJKoZIhvcNAQcCoIIb2zCCG9cCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDSAs2w9Y1fTgKK
-# q/xAa1PWVO0sO46AEPCjrg+SFFDdzaCCFlIwggMUMIIB/KADAgECAhAT2c9S4U98
-# jEh2eqrtOGKiMA0GCSqGSIb3DQEBBQUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
-# MB4XDTI0MTAyMzEyMjAwMloXDTI2MTAyMzEyMzAwMlowFjEUMBIGA1UEAwwLc3Fs
-# ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDivSzgGDqW
-# woiD7OBa8twT0nzHGNakwZtEzvq3HcL8bCgfDdp/0kpzoS6IKpjt2pyr0xGcXnTL
-# SvEtJ70XOgn179a1TlaRUly+ibuUfO15inrwPf1a6fqgvPMoXV6bMxpsbmx9vS6C
-# UBYO14GUN10GtlQgpUYY1N0czabC7yXfo8EwkO1ZTGoXADinHBF0poKffnR0EX5B
-# iL7/WGRfT3JgFZ8twYMoKOc4hJ+GZbudtAptvnWzAdiWM8UfwQwcH8SJQ7n5whPO
-# PV8e+aICbmgf9j8NcVAKUKqBiGLmEhKKjGKaUow53cTsshtGCndv5dnMgE2ppkxh
-# aWNn8qRqYdQFAgMBAAGjXjBcMA4GA1UdDwEB/wQEAwIHgDATBgNVHSUEDDAKBggr
-# BgEFBQcDAzAWBgNVHREEDzANggtzcWxkZWVwLmNvbTAdBgNVHQ4EFgQUwoHZNhYd
-# VvtzY5g9WlOViG86b8EwDQYJKoZIhvcNAQEFBQADggEBAAvLzZ9wWrupREYXkcex
-# oLBwbxjIHueaxluMmJs4MSvfyLG7mzjvkskf2AxfaMnWr//W+0KLhxZ0+itc/B4F
-# Ep4cLCZynBWa+iSCc8iCF0DczTjU1exG0mUff82e7c5mXs3oi6aOPRyy3XBjZqZd
-# YE1HWl9GYhboC5kY65Z42ZsbNyPOM8nhJNzBKq9V6eyNE2JnxlrQ1v19lxXOm6WW
-# Hgnh++tUf9k8DI1D7Da3bQqsj8O+ACHjhjMVzWKqAtnDxydaOOjRhKWIlHUQ7fLW
-# GYFZW2JXnogqxFR2tzdpZxsNgD4vHFzt1CspiHzhIsMwfQFxIg44Ny/U96l2aVpR
-# 6lUwggWNMIIEdaADAgECAhAOmxiO+dAt5+/bUOIIQBhaMA0GCSqGSIb3DQEBDAUA
-# MGUxCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsT
-# EHd3dy5kaWdpY2VydC5jb20xJDAiBgNVBAMTG0RpZ2lDZXJ0IEFzc3VyZWQgSUQg
-# Um9vdCBDQTAeFw0yMjA4MDEwMDAwMDBaFw0zMTExMDkyMzU5NTlaMGIxCzAJBgNV
-# BAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdp
-# Y2VydC5jb20xITAfBgNVBAMTGERpZ2lDZXJ0IFRydXN0ZWQgUm9vdCBHNDCCAiIw
-# DQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAL/mkHNo3rvkXUo8MCIwaTPswqcl
-# LskhPfKK2FnC4SmnPVirdprNrnsbhA3EMB/zG6Q4FutWxpdtHauyefLKEdLkX9YF
-# PFIPUh/GnhWlfr6fqVcWWVVyr2iTcMKyunWZanMylNEQRBAu34LzB4TmdDttceIt
-# DBvuINXJIB1jKS3O7F5OyJP4IWGbNOsFxl7sWxq868nPzaw0QF+xembud8hIqGZX
-# V59UWI4MK7dPpzDZVu7Ke13jrclPXuU15zHL2pNe3I6PgNq2kZhAkHnDeMe2scS1
-# ahg4AxCN2NQ3pC4FfYj1gj4QkXCrVYJBMtfbBHMqbpEBfCFM1LyuGwN1XXhm2Tox
-# RJozQL8I11pJpMLmqaBn3aQnvKFPObURWBf3JFxGj2T3wWmIdph2PVldQnaHiZdp
-# ekjw4KISG2aadMreSx7nDmOu5tTvkpI6nj3cAORFJYm2mkQZK37AlLTSYW3rM9nF
-# 30sEAMx9HJXDj/chsrIRt7t/8tWMcCxBYKqxYxhElRp2Yn72gLD76GSmM9GJB+G9
-# t+ZDpBi4pncB4Q+UDCEdslQpJYls5Q5SUUd0viastkF13nqsX40/ybzTQRESW+UQ
-# UOsxxcpyFiIJ33xMdT9j7CFfxCBRa2+xq4aLT8LWRV+dIPyhHsXAj6KxfgommfXk
-# aS+YHS312amyHeUbAgMBAAGjggE6MIIBNjAPBgNVHRMBAf8EBTADAQH/MB0GA1Ud
-# DgQWBBTs1+OC0nFdZEzfLmc/57qYrhwPTzAfBgNVHSMEGDAWgBRF66Kv9JLLgjEt
-# UYunpyGd823IDzAOBgNVHQ8BAf8EBAMCAYYweQYIKwYBBQUHAQEEbTBrMCQGCCsG
-# AQUFBzABhhhodHRwOi8vb2NzcC5kaWdpY2VydC5jb20wQwYIKwYBBQUHMAKGN2h0
-# dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydEFzc3VyZWRJRFJvb3RD
-# QS5jcnQwRQYDVR0fBD4wPDA6oDigNoY0aHR0cDovL2NybDMuZGlnaWNlcnQuY29t
-# L0RpZ2lDZXJ0QXNzdXJlZElEUm9vdENBLmNybDARBgNVHSAECjAIMAYGBFUdIAAw
-# DQYJKoZIhvcNAQEMBQADggEBAHCgv0NcVec4X6CjdBs9thbX979XB72arKGHLOyF
-# XqkauyL4hxppVCLtpIh3bb0aFPQTSnovLbc47/T/gLn4offyct4kvFIDyE7QKt76
-# LVbP+fT3rDB6mouyXtTP0UNEm0Mh65ZyoUi0mcudT6cGAxN3J0TU53/oWajwvy8L
-# punyNDzs9wPHh6jSTEAZNUZqaVSwuKFWjuyk1T3osdz9HNj0d1pcVIxv76FQPfx2
-# CWiEn2/K2yCNNWAcAgPLILCsWKAOQGPFmCLBsln1VWvPJ6tsds5vIy30fnFqI2si
-# /xK4VC0nftg62fC2h5b9W9FcrBjDTZ9ztwGpn1eqXijiuZQwgga0MIIEnKADAgEC
-# AhANx6xXBf8hmS5AQyIMOkmGMA0GCSqGSIb3DQEBCwUAMGIxCzAJBgNVBAYTAlVT
-# MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
-# b20xITAfBgNVBAMTGERpZ2lDZXJ0IFRydXN0ZWQgUm9vdCBHNDAeFw0yNTA1MDcw
-# MDAwMDBaFw0zODAxMTQyMzU5NTlaMGkxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5E
-# aWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQgVHJ1c3RlZCBHNCBUaW1l
-# U3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYgMjAyNSBDQTEwggIiMA0GCSqGSIb3DQEB
-# AQUAA4ICDwAwggIKAoICAQC0eDHTCphBcr48RsAcrHXbo0ZodLRRF51NrY0NlLWZ
-# loMsVO1DahGPNRcybEKq+RuwOnPhof6pvF4uGjwjqNjfEvUi6wuim5bap+0lgloM
-# 2zX4kftn5B1IpYzTqpyFQ/4Bt0mAxAHeHYNnQxqXmRinvuNgxVBdJkf77S2uPoCj
-# 7GH8BLuxBG5AvftBdsOECS1UkxBvMgEdgkFiDNYiOTx4OtiFcMSkqTtF2hfQz3zQ
-# Sku2Ws3IfDReb6e3mmdglTcaarps0wjUjsZvkgFkriK9tUKJm/s80FiocSk1VYLZ
-# lDwFt+cVFBURJg6zMUjZa/zbCclF83bRVFLeGkuAhHiGPMvSGmhgaTzVyhYn4p0+
-# 8y9oHRaQT/aofEnS5xLrfxnGpTXiUOeSLsJygoLPp66bkDX1ZlAeSpQl92QOMeRx
-# ykvq6gbylsXQskBBBnGy3tW/AMOMCZIVNSaz7BX8VtYGqLt9MmeOreGPRdtBx3yG
-# OP+rx3rKWDEJlIqLXvJWnY0v5ydPpOjL6s36czwzsucuoKs7Yk/ehb//Wx+5kMqI
-# MRvUBDx6z1ev+7psNOdgJMoiwOrUG2ZdSoQbU2rMkpLiQ6bGRinZbI4OLu9BMIFm
-# 1UUl9VnePs6BaaeEWvjJSjNm2qA+sdFUeEY0qVjPKOWug/G6X5uAiynM7Bu2ayBj
-# UwIDAQABo4IBXTCCAVkwEgYDVR0TAQH/BAgwBgEB/wIBADAdBgNVHQ4EFgQU729T
-# SunkBnx6yuKQVvYv1Ensy04wHwYDVR0jBBgwFoAU7NfjgtJxXWRM3y5nP+e6mK4c
-# D08wDgYDVR0PAQH/BAQDAgGGMBMGA1UdJQQMMAoGCCsGAQUFBwMIMHcGCCsGAQUF
-# BwEBBGswaTAkBggrBgEFBQcwAYYYaHR0cDovL29jc3AuZGlnaWNlcnQuY29tMEEG
-# CCsGAQUFBzAChjVodHRwOi8vY2FjZXJ0cy5kaWdpY2VydC5jb20vRGlnaUNlcnRU
-# cnVzdGVkUm9vdEc0LmNydDBDBgNVHR8EPDA6MDigNqA0hjJodHRwOi8vY3JsMy5k
-# aWdpY2VydC5jb20vRGlnaUNlcnRUcnVzdGVkUm9vdEc0LmNybDAgBgNVHSAEGTAX
-# MAgGBmeBDAEEAjALBglghkgBhv1sBwEwDQYJKoZIhvcNAQELBQADggIBABfO+xaA
-# HP4HPRF2cTC9vgvItTSmf83Qh8WIGjB/T8ObXAZz8OjuhUxjaaFdleMM0lBryPTQ
-# M2qEJPe36zwbSI/mS83afsl3YTj+IQhQE7jU/kXjjytJgnn0hvrV6hqWGd3rLAUt
-# 6vJy9lMDPjTLxLgXf9r5nWMQwr8Myb9rEVKChHyfpzee5kH0F8HABBgr0UdqirZ7
-# bowe9Vj2AIMD8liyrukZ2iA/wdG2th9y1IsA0QF8dTXqvcnTmpfeQh35k5zOCPmS
-# Nq1UH410ANVko43+Cdmu4y81hjajV/gxdEkMx1NKU4uHQcKfZxAvBAKqMVuqte69
-# M9J6A47OvgRaPs+2ykgcGV00TYr2Lr3ty9qIijanrUR3anzEwlvzZiiyfTPjLbnF
-# RsjsYg39OlV8cipDoq7+qNNjqFzeGxcytL5TTLL4ZaoBdqbhOhZ3ZRDUphPvSRmM
-# Thi0vw9vODRzW6AxnJll38F0cuJG7uEBYTptMSbhdhGQDpOXgpIUsWTjd6xpR6oa
-# Qf/DJbg3s6KCLPAlZ66RzIg9sC+NJpud/v4+7RWsWCiKi9EOLLHfMR2ZyJ/+xhCx
-# 9yHbxtl5TPau1j/1MIDpMPx0LckTetiSuEtQvLsNz3Qbp7wGWqbIiOWCnb5WqxL3
-# /BAPvIXKUjPSxyZsq8WhbaM2tszWkPZPubdcMIIG7TCCBNWgAwIBAgIQCoDvGEuN
-# 8QWC0cR2p5V0aDANBgkqhkiG9w0BAQsFADBpMQswCQYDVQQGEwJVUzEXMBUGA1UE
-# ChMORGlnaUNlcnQsIEluYy4xQTA/BgNVBAMTOERpZ2lDZXJ0IFRydXN0ZWQgRzQg
-# VGltZVN0YW1waW5nIFJTQTQwOTYgU0hBMjU2IDIwMjUgQ0ExMB4XDTI1MDYwNDAw
-# MDAwMFoXDTM2MDkwMzIzNTk1OVowYzELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRp
-# Z2lDZXJ0LCBJbmMuMTswOQYDVQQDEzJEaWdpQ2VydCBTSEEyNTYgUlNBNDA5NiBU
-# aW1lc3RhbXAgUmVzcG9uZGVyIDIwMjUgMTCCAiIwDQYJKoZIhvcNAQEBBQADggIP
-# ADCCAgoCggIBANBGrC0Sxp7Q6q5gVrMrV7pvUf+GcAoB38o3zBlCMGMyqJnfFNZx
-# +wvA69HFTBdwbHwBSOeLpvPnZ8ZN+vo8dE2/pPvOx/Vj8TchTySA2R4QKpVD7dvN
-# Zh6wW2R6kSu9RJt/4QhguSssp3qome7MrxVyfQO9sMx6ZAWjFDYOzDi8SOhPUWlL
-# nh00Cll8pjrUcCV3K3E0zz09ldQ//nBZZREr4h/GI6Dxb2UoyrN0ijtUDVHRXdmn
-# cOOMA3CoB/iUSROUINDT98oksouTMYFOnHoRh6+86Ltc5zjPKHW5KqCvpSduSwhw
-# UmotuQhcg9tw2YD3w6ySSSu+3qU8DD+nigNJFmt6LAHvH3KSuNLoZLc1Hf2JNMVL
-# 4Q1OpbybpMe46YceNA0LfNsnqcnpJeItK/DhKbPxTTuGoX7wJNdoRORVbPR1VVnD
-# uSeHVZlc4seAO+6d2sC26/PQPdP51ho1zBp+xUIZkpSFA8vWdoUoHLWnqWU3dCCy
-# FG1roSrgHjSHlq8xymLnjCbSLZ49kPmk8iyyizNDIXj//cOgrY7rlRyTlaCCfw7a
-# SUROwnu7zER6EaJ+AliL7ojTdS5PWPsWeupWs7NpChUk555K096V1hE0yZIXe+gi
-# AwW00aHzrDchIc2bQhpp0IoKRR7YufAkprxMiXAJQ1XCmnCfgPf8+3mnAgMBAAGj
-# ggGVMIIBkTAMBgNVHRMBAf8EAjAAMB0GA1UdDgQWBBTkO/zyMe39/dfzkXFjGVBD
-# z2GM6DAfBgNVHSMEGDAWgBTvb1NK6eQGfHrK4pBW9i/USezLTjAOBgNVHQ8BAf8E
-# BAMCB4AwFgYDVR0lAQH/BAwwCgYIKwYBBQUHAwgwgZUGCCsGAQUFBwEBBIGIMIGF
-# MCQGCCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdpY2VydC5jb20wXQYIKwYBBQUH
-# MAKGUWh0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydFRydXN0ZWRH
-# NFRpbWVTdGFtcGluZ1JTQTQwOTZTSEEyNTYyMDI1Q0ExLmNydDBfBgNVHR8EWDBW
-# MFSgUqBQhk5odHRwOi8vY3JsMy5kaWdpY2VydC5jb20vRGlnaUNlcnRUcnVzdGVk
-# RzRUaW1lU3RhbXBpbmdSU0E0MDk2U0hBMjU2MjAyNUNBMS5jcmwwIAYDVR0gBBkw
-# FzAIBgZngQwBBAIwCwYJYIZIAYb9bAcBMA0GCSqGSIb3DQEBCwUAA4ICAQBlKq3x
-# HCcEua5gQezRCESeY0ByIfjk9iJP2zWLpQq1b4URGnwWBdEZD9gBq9fNaNmFj6Eh
-# 8/YmRDfxT7C0k8FUFqNh+tshgb4O6Lgjg8K8elC4+oWCqnU/ML9lFfim8/9yJmZS
-# e2F8AQ/UdKFOtj7YMTmqPO9mzskgiC3QYIUP2S3HQvHG1FDu+WUqW4daIqToXFE/
-# JQ/EABgfZXLWU0ziTN6R3ygQBHMUBaB5bdrPbF6MRYs03h4obEMnxYOX8VBRKe1u
-# NnzQVTeLni2nHkX/QqvXnNb+YkDFkxUGtMTaiLR9wjxUxu2hECZpqyU1d0IbX6Wq
-# 8/gVutDojBIFeRlqAcuEVT0cKsb+zJNEsuEB7O7/cuvTQasnM9AWcIQfVjnzrvwi
-# CZ85EE8LUkqRhoS3Y50OHgaY7T/lwd6UArb+BOVAkg2oOvol/DJgddJ35XTxfUlQ
-# +8Hggt8l2Yv7roancJIFcbojBcxlRcGG0LIhp6GvReQGgMgYxQbV1S3CrWqZzBt1
-# R9xJgKf47CdxVRd/ndUlQ05oxYy2zRWVFjF7mcr4C34Mj3ocCVccAvlKV9jEnstr
-# niLvUxxVZE/rptb7IRE2lskKPIJgbaP5t2nGj/ULLi49xTcBZU8atufk+EMF/cWu
-# iC7POGT75qaL6vdCvHlshtjdNXOCIUjsarfNZzGCBQYwggUCAgEBMCowFjEUMBIG
-# A1UEAwwLc3FsZGVlcC5jb20CEBPZz1LhT3yMSHZ6qu04YqIwDQYJYIZIAWUDBAIB
-# BQCggYQwGAYKKwYBBAGCNwIBDDEKMAigAoAAoQKAADAZBgkqhkiG9w0BCQMxDAYK
-# KwYBBAGCNwIBBDAcBgorBgEEAYI3AgELMQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG
-# 9w0BCQQxIgQg8EUhw287x3F6PkT6iQ1bnTg7OqBg6AxPaDkq16WJ6nkwDQYJKoZI
-# hvcNAQEBBQAEggEAQn31En+O6EKf1gLm1YDZMSjFUaHSiN3hOAhc+tSsdKbFbC5/
-# uRHRmlV+y+UnHnfmkbZR/RODOx1jLsobNe7a4or1B9YueBeSIV5XJT0TJ6nK3PAV
-# s/t2VrLTLV4sziRxx+EkKT5a1Mj2yy7bJXLcjmWyzzxfwT0Q+Htd6lfgYJKZmEpk
-# qVTfWG7sTlGl8vdSYAs98JWx/LhmR1I3tV59IagH35SDwdKbLzewoR0IhUEaMhRH
-# IY8BiBBWT/58jIK65F2/U4b6N2M9kZpc/EfjLeI1slp5K26szdL4q/9CmOZnZwa2
-# X0+33pEChJy+kJ7cymYEey5qwUSbZm3R0jcHzaGCAyYwggMiBgkqhkiG9w0BCQYx
-# ggMTMIIDDwIBATB9MGkxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwg
-# SW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQgVHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcg
-# UlNBNDA5NiBTSEEyNTYgMjAyNSBDQTECEAqA7xhLjfEFgtHEdqeVdGgwDQYJYIZI
-# AWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMxCwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJ
-# BTEPFw0yNjAzMTYxNTE3NTZaMC8GCSqGSIb3DQEJBDEiBCC/WNFZ5M1KEzeYWI8w
-# R6adN0MNOEMcVShiGqPGyp6xfTANBgkqhkiG9w0BAQEFAASCAgDNQF7Wr/q2Dw7h
-# jrsf7wz5ZYX1arwQwAoYXmEU4hnl4Gt/4NnN6VjZuyK6retLdz2xzOKQIpI/4VCg
-# 8oDxlawr1y5WRtN88AxPk8V8boeRnD8mlq6imA8DmT6T4eNTKJACNfUiiU6pi51N
-# K8I8pPMqkVrLX+A/NOeIoNhEcHF4CkNrNF2w/V1ei2TR7otBWVnqKTTVfVIpa8SP
-# CxQcO7VX0/+ZSvq1bjl+NktgixDZdJTCsX+jC1FNw5ucB+j6djoh/5CJ49YpdeCt
-# rXSQ4Si3xMrduzw7ui4cMX3g2tvuz/NL9AoJ/xrG3BsfLMP4/9u+/AK4T+QmVVJR
-# XHfG3ODQvCOJTuBfP3INxZTnsn58iJqLeuAcgWn3yjUNRS0mnRdeyv/srNiyLvPP
-# z9AJWJuaXtCmqMkL+GjLBbz6GNhLaPgxAXoxB9K/O/Y91Hvz/T8VZR/eSlZtue0v
-# dLOGUssV33dkAulcAHeo5oYtF1kz2wVC6qng4FSt/2JeZLKZr9bE9Eh8OjydYYup
-# +2+yRQBwFX6QMBID+T4TSxYTBtawF54a8LBU3EsrS26GDphKSZnZWg5TotgxjQdZ
-# D+cmbCrQ75VBFRrqTTLfOoZWBRuK+vM3dALCZTxBnw5+PoYHTB8RFDyyXXrhi1+7
-# dVYppD6kOR5pjelkd0ryN8udtmeXpg==
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDEai5LSeNtZrxF
+# Ja6O5Glx4SWt1PofFXe80OII23NEaaCCFjowggL8MIIB5KADAgECAhBuGGiP9rFT
+# sEjfxjEo89WdMA0GCSqGSIb3DQEBCwUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
+# MB4XDTI2MDcyODEyMjQ1MVoXDTI3MDcyODEyNDQ1MVowFjEUMBIGA1UEAwwLc3Fs
+# ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDNOXX1vdSL
+# U0u489johy9jEFIcvpJoJx0CWOasotOkoW0AJKh8abBNWcGUMbz+BONVSvr9lEMV
+# 8HaWBUpnst/7Y7di49A/sVJgljT26H2K7jJ0Ot5342TKYp5NlMZWS+yLugHXXpQ8
+# pAHwjeU0E6IIqDZUMc3aXcz13lxH2Lmomifx7h80JdjTnKg3VEGSt9Nk7Bt3kTHW
+# AHZo6a/uVQuTNRVpFHg5baZs6pW4rmcyF2GrZYC1bbuwS3RfI442GB67oqS+EZv5
+# lGRn0ZGKisoJ5sVHzsZrZnDKtATEY7j93diosWk4Ylh/isl56RFBVSp0q5Wh3Y7u
+# TlBepciv+YhhAgMBAAGjRjBEMA4GA1UdDwEB/wQEAwIHgDATBgNVHSUEDDAKBggr
+# BgEFBQcDAzAdBgNVHQ4EFgQUpj47586JqBg2vR/KExFCqFUrEgMwDQYJKoZIhvcN
+# AQELBQADggEBAEynF/H5ccJzVOfxmFmOaK/sPCFaJeAoU0kfACVVkjVcfzvYoJSu
+# LIio+7fihza5JI6UcrK67NPU6DKLM3mGrdh0XFG7lAVGQ8u0f22+PC8liPib9G2V
+# g6QDM04Y5/jdJolxmV4lyAO5rRaU5GQ9Nv9wQP0bpKOtVu2BC+synzlqSSRp23wD
+# x3dgi06D+j2OIjGP50bJhdrPagmtT2+UeOWTDHBkvRtAh3hwwbPM7kl0oxRZsJnM
+# AjPgc7CxptFxtyylL9noP/48/HW/gm6AN4HWfJglprZFrEUX31BaROBcG65zTt0a
+# ZxvHT7NkSYvZ+pawSBBfrc0NXUhK5IPBJLcwggWNMIIEdaADAgECAhAOmxiO+dAt
+# 5+/bUOIIQBhaMA0GCSqGSIb3DQEBDAUAMGUxCzAJBgNVBAYTAlVTMRUwEwYDVQQK
+# EwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xJDAiBgNV
+# BAMTG0RpZ2lDZXJ0IEFzc3VyZWQgSUQgUm9vdCBDQTAeFw0yMjA4MDEwMDAwMDBa
+# Fw0zMTExMDkyMzU5NTlaMGIxCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2Vy
+# dCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xITAfBgNVBAMTGERpZ2lD
+# ZXJ0IFRydXN0ZWQgUm9vdCBHNDCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoC
+# ggIBAL/mkHNo3rvkXUo8MCIwaTPswqclLskhPfKK2FnC4SmnPVirdprNrnsbhA3E
+# MB/zG6Q4FutWxpdtHauyefLKEdLkX9YFPFIPUh/GnhWlfr6fqVcWWVVyr2iTcMKy
+# unWZanMylNEQRBAu34LzB4TmdDttceItDBvuINXJIB1jKS3O7F5OyJP4IWGbNOsF
+# xl7sWxq868nPzaw0QF+xembud8hIqGZXV59UWI4MK7dPpzDZVu7Ke13jrclPXuU1
+# 5zHL2pNe3I6PgNq2kZhAkHnDeMe2scS1ahg4AxCN2NQ3pC4FfYj1gj4QkXCrVYJB
+# MtfbBHMqbpEBfCFM1LyuGwN1XXhm2ToxRJozQL8I11pJpMLmqaBn3aQnvKFPObUR
+# WBf3JFxGj2T3wWmIdph2PVldQnaHiZdpekjw4KISG2aadMreSx7nDmOu5tTvkpI6
+# nj3cAORFJYm2mkQZK37AlLTSYW3rM9nF30sEAMx9HJXDj/chsrIRt7t/8tWMcCxB
+# YKqxYxhElRp2Yn72gLD76GSmM9GJB+G9t+ZDpBi4pncB4Q+UDCEdslQpJYls5Q5S
+# UUd0viastkF13nqsX40/ybzTQRESW+UQUOsxxcpyFiIJ33xMdT9j7CFfxCBRa2+x
+# q4aLT8LWRV+dIPyhHsXAj6KxfgommfXkaS+YHS312amyHeUbAgMBAAGjggE6MIIB
+# NjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBTs1+OC0nFdZEzfLmc/57qYrhwP
+# TzAfBgNVHSMEGDAWgBRF66Kv9JLLgjEtUYunpyGd823IDzAOBgNVHQ8BAf8EBAMC
+# AYYweQYIKwYBBQUHAQEEbTBrMCQGCCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdp
+# Y2VydC5jb20wQwYIKwYBBQUHMAKGN2h0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNv
+# bS9EaWdpQ2VydEFzc3VyZWRJRFJvb3RDQS5jcnQwRQYDVR0fBD4wPDA6oDigNoY0
+# aHR0cDovL2NybDMuZGlnaWNlcnQuY29tL0RpZ2lDZXJ0QXNzdXJlZElEUm9vdENB
+# LmNybDARBgNVHSAECjAIMAYGBFUdIAAwDQYJKoZIhvcNAQEMBQADggEBAHCgv0Nc
+# Vec4X6CjdBs9thbX979XB72arKGHLOyFXqkauyL4hxppVCLtpIh3bb0aFPQTSnov
+# Lbc47/T/gLn4offyct4kvFIDyE7QKt76LVbP+fT3rDB6mouyXtTP0UNEm0Mh65Zy
+# oUi0mcudT6cGAxN3J0TU53/oWajwvy8LpunyNDzs9wPHh6jSTEAZNUZqaVSwuKFW
+# juyk1T3osdz9HNj0d1pcVIxv76FQPfx2CWiEn2/K2yCNNWAcAgPLILCsWKAOQGPF
+# mCLBsln1VWvPJ6tsds5vIy30fnFqI2si/xK4VC0nftg62fC2h5b9W9FcrBjDTZ9z
+# twGpn1eqXijiuZQwgga0MIIEnKADAgECAhANx6xXBf8hmS5AQyIMOkmGMA0GCSqG
+# SIb3DQEBCwUAMGIxCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMx
+# GTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xITAfBgNVBAMTGERpZ2lDZXJ0IFRy
+# dXN0ZWQgUm9vdCBHNDAeFw0yNTA1MDcwMDAwMDBaFw0zODAxMTQyMzU5NTlaMGkx
+# CzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4
+# RGlnaUNlcnQgVHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYg
+# MjAyNSBDQTEwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC0eDHTCphB
+# cr48RsAcrHXbo0ZodLRRF51NrY0NlLWZloMsVO1DahGPNRcybEKq+RuwOnPhof6p
+# vF4uGjwjqNjfEvUi6wuim5bap+0lgloM2zX4kftn5B1IpYzTqpyFQ/4Bt0mAxAHe
+# HYNnQxqXmRinvuNgxVBdJkf77S2uPoCj7GH8BLuxBG5AvftBdsOECS1UkxBvMgEd
+# gkFiDNYiOTx4OtiFcMSkqTtF2hfQz3zQSku2Ws3IfDReb6e3mmdglTcaarps0wjU
+# jsZvkgFkriK9tUKJm/s80FiocSk1VYLZlDwFt+cVFBURJg6zMUjZa/zbCclF83bR
+# VFLeGkuAhHiGPMvSGmhgaTzVyhYn4p0+8y9oHRaQT/aofEnS5xLrfxnGpTXiUOeS
+# LsJygoLPp66bkDX1ZlAeSpQl92QOMeRxykvq6gbylsXQskBBBnGy3tW/AMOMCZIV
+# NSaz7BX8VtYGqLt9MmeOreGPRdtBx3yGOP+rx3rKWDEJlIqLXvJWnY0v5ydPpOjL
+# 6s36czwzsucuoKs7Yk/ehb//Wx+5kMqIMRvUBDx6z1ev+7psNOdgJMoiwOrUG2Zd
+# SoQbU2rMkpLiQ6bGRinZbI4OLu9BMIFm1UUl9VnePs6BaaeEWvjJSjNm2qA+sdFU
+# eEY0qVjPKOWug/G6X5uAiynM7Bu2ayBjUwIDAQABo4IBXTCCAVkwEgYDVR0TAQH/
+# BAgwBgEB/wIBADAdBgNVHQ4EFgQU729TSunkBnx6yuKQVvYv1Ensy04wHwYDVR0j
+# BBgwFoAU7NfjgtJxXWRM3y5nP+e6mK4cD08wDgYDVR0PAQH/BAQDAgGGMBMGA1Ud
+# JQQMMAoGCCsGAQUFBwMIMHcGCCsGAQUFBwEBBGswaTAkBggrBgEFBQcwAYYYaHR0
+# cDovL29jc3AuZGlnaWNlcnQuY29tMEEGCCsGAQUFBzAChjVodHRwOi8vY2FjZXJ0
+# cy5kaWdpY2VydC5jb20vRGlnaUNlcnRUcnVzdGVkUm9vdEc0LmNydDBDBgNVHR8E
+# PDA6MDigNqA0hjJodHRwOi8vY3JsMy5kaWdpY2VydC5jb20vRGlnaUNlcnRUcnVz
+# dGVkUm9vdEc0LmNybDAgBgNVHSAEGTAXMAgGBmeBDAEEAjALBglghkgBhv1sBwEw
+# DQYJKoZIhvcNAQELBQADggIBABfO+xaAHP4HPRF2cTC9vgvItTSmf83Qh8WIGjB/
+# T8ObXAZz8OjuhUxjaaFdleMM0lBryPTQM2qEJPe36zwbSI/mS83afsl3YTj+IQhQ
+# E7jU/kXjjytJgnn0hvrV6hqWGd3rLAUt6vJy9lMDPjTLxLgXf9r5nWMQwr8Myb9r
+# EVKChHyfpzee5kH0F8HABBgr0UdqirZ7bowe9Vj2AIMD8liyrukZ2iA/wdG2th9y
+# 1IsA0QF8dTXqvcnTmpfeQh35k5zOCPmSNq1UH410ANVko43+Cdmu4y81hjajV/gx
+# dEkMx1NKU4uHQcKfZxAvBAKqMVuqte69M9J6A47OvgRaPs+2ykgcGV00TYr2Lr3t
+# y9qIijanrUR3anzEwlvzZiiyfTPjLbnFRsjsYg39OlV8cipDoq7+qNNjqFzeGxcy
+# tL5TTLL4ZaoBdqbhOhZ3ZRDUphPvSRmMThi0vw9vODRzW6AxnJll38F0cuJG7uEB
+# YTptMSbhdhGQDpOXgpIUsWTjd6xpR6oaQf/DJbg3s6KCLPAlZ66RzIg9sC+NJpud
+# /v4+7RWsWCiKi9EOLLHfMR2ZyJ/+xhCx9yHbxtl5TPau1j/1MIDpMPx0LckTetiS
+# uEtQvLsNz3Qbp7wGWqbIiOWCnb5WqxL3/BAPvIXKUjPSxyZsq8WhbaM2tszWkPZP
+# ubdcMIIG7TCCBNWgAwIBAgIQCE/cM09+RU7bww+P+ZIYNTANBgkqhkiG9w0BAQsF
+# ADBpMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGlnaUNlcnQsIEluYy4xQTA/BgNV
+# BAMTOERpZ2lDZXJ0IFRydXN0ZWQgRzQgVGltZVN0YW1waW5nIFJTQTQwOTYgU0hB
+# MjU2IDIwMjUgQ0ExMB4XDTI2MDgwNTAwMDAwMFoXDTM3MTEwNDIzNTk1OVowYzEL
+# MAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTswOQYDVQQDEzJE
+# aWdpQ2VydCBTSEEyNTYgUlNBNDA5NiBUaW1lc3RhbXAgUmVzcG9uZGVyIDIwMjYg
+# MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBALZ7pvLJ/s1K+NSbTGWz
+# /TjGMPh8CQ6RucZCLv5anHzWJjF/NWJrFIhy24fcpKXlgRiky4WAawDfU3YP0BMx
+# t9l3Dm5oCG5Z69AqEN1kgHg2epx+l+lZBcmJCcN0ASURML5uFIS80sZsDwO3BSkU
+# xDjLJhBI+qiZP3aixAC/qEGLjsBNlLol9VZ7pfGEXiMlneJIC5/YKuizVzNFKZZE
+# eoy/0B8Zm+nzKBgSWG52lCO1w+nCg6XpCtklTJXeIg283hw7TmmsZXR+SMbjbrEO
+# vZ3fP2VxIgeR28Y90ZStd3F9VuA5RVynb/whITPAo9b75Zr4Ta6Mj3URm26QZYMn
+# /FnbuTegcoRcFEZ9FOqM5T6MTdtr/n74lIT/ug0eeOzmZ6QTFg33otX+bFRsIolv
+# ykE1jive4PuESaT8zzVeFWDAMDtozNgLctkGD1ZjkEyZtJrLl5ya0m5doH/ScpaZ
+# CZVl6pNUOCybMc/kxC6EAmSJY24L0yYKD1Nkddsnb/ItVKi/2nXpQNMu1PT5prW8
+# 3vV8d67WowuUs0HdY4H8AMLGvdL/WHEj3ZnqMqAQQP9u3Ai9t+5eQ02GDwy0ODjd
+# zi0xlp70W+ow63/0++YDEX1M0iwgUHwbrJvfpklkZQvw3+kv3vUPItdwroczk9ic
+# flf55W1zOEKAcJVAIXpcMCU9AgMBAAGjggGVMIIBkTAMBgNVHRMBAf8EAjAAMB0G
+# A1UdDgQWBBQUyWOKMC7USvtulPPm40B+9ezN4jAfBgNVHSMEGDAWgBTvb1NK6eQG
+# fHrK4pBW9i/USezLTjAOBgNVHQ8BAf8EBAMCB4AwFgYDVR0lAQH/BAwwCgYIKwYB
+# BQUHAwgwgZUGCCsGAQUFBwEBBIGIMIGFMCQGCCsGAQUFBzABhhhodHRwOi8vb2Nz
+# cC5kaWdpY2VydC5jb20wXQYIKwYBBQUHMAKGUWh0dHA6Ly9jYWNlcnRzLmRpZ2lj
+# ZXJ0LmNvbS9EaWdpQ2VydFRydXN0ZWRHNFRpbWVTdGFtcGluZ1JTQTQwOTZTSEEy
+# NTYyMDI1Q0ExLmNydDBfBgNVHR8EWDBWMFSgUqBQhk5odHRwOi8vY3JsMy5kaWdp
+# Y2VydC5jb20vRGlnaUNlcnRUcnVzdGVkRzRUaW1lU3RhbXBpbmdSU0E0MDk2U0hB
+# MjU2MjAyNUNBMS5jcmwwIAYDVR0gBBkwFzAIBgZngQwBBAIwCwYJYIZIAYb9bAcB
+# MA0GCSqGSIb3DQEBCwUAA4ICAQCNxTphHp1SCt+ZrAmAfn0oQLFr0mLywSLaDXQI
+# ENoyKqxrFbJblzCVP/pkXmwXOdrOpWygLzlT12os5ipDCy35RBCg2UMeApEtrfGh
+# z45F4Wt4WGdNdIbRWt3YTYJmpR+b7lr4d7Uwn+H600u4D7RnOGf8Wj4UNgAdZkfH
+# hHv1mx9EVh71SJelcEN/oORSjXzdjfw1iZH9d8Nh/thn6hH23d+VsPAr6GAYyzSA
+# 02nXD1nYLI7Ijmiv+xLCiYC41DSFYL3GhTiy0PxpawPtGRyaBVGzq+UiTfM8pD7K
+# VyF5aQyWP4KhVGUUTnmm/RlYJoW3TiXA/+t0YcT2oRVBm3JETjajHug2AL+v5jht
+# KVnd3D0rbHXEu27o+Q8p4sEWPMqKDB+qbceb6T/6WcwTwXmQ9lOCLLYcsQeSWmvK
+# qzpAec9etE14jOQAzLKWdE3w/TCaKtLRaRT7LCkRYVnhA2D73FLje1O5b3HR5eHs
+# 0NzU/+xX7NbEdcofy0W3Wdwd1XOqtlpg/JgwtKfZM5dqO94lbUveOiJBI+xZEbGR
+# sMNbXmMREUTgu+Oca7Y73MPWcslIx2VhkSKSXjDbD6rgg39H5Mh7QfieAIjWagkJ
+# Nt68Yfim6cjEzVSiLSeZfdkr5dtFPTW6jATlWJdYeeDRGCyatf8R1hSjzSvdN8yW
+# QPT9gzGCBQYwggUCAgEBMCowFjEUMBIGA1UEAwwLc3FsZGVlcC5jb20CEG4YaI/2
+# sVOwSN/GMSjz1Z0wDQYJYIZIAWUDBAIBBQCggYQwGAYKKwYBBAGCNwIBDDEKMAig
+# AoAAoQKAADAZBgkqhkiG9w0BCQMxDAYKKwYBBAGCNwIBBDAcBgorBgEEAYI3AgEL
+# MQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQgYZfGw+n2VtdQe/uqhaCx
+# SxObtTXFSFFdSMzjhUE7vJ4wDQYJKoZIhvcNAQEBBQAEggEAirgANGtiC3iMvHIR
+# jkqLwsblCURoqDuGiG9+dSlaiS9RCMxmLhTmfjBgi0OkZ0zqcfQEU5Rby0Zk4CZ2
+# SOe4Trg3PlgOuS7C+ZjNOpt4wL8VCUnztbk0MiZ2DtYHXFeXzSYYUpLMKcwT3LVP
+# 5VMGVcroG0pGySZ1z8AyygIxz0M8Jy6vOqQMQWa2JkSROmmNIYOHbAs0KtVN/4z2
+# lD8vPi7qaKN7yJ9aILXOg4PqbptJ51OcIN/5Zi1OmMODh7vVrNGM4piPbQlRUOQe
+# +Lj5p7aPbrtlwBfEWpOvGAW0t8TR+AI5ylK1XAYl/OBt8iIuakXNnnnZi4aaDBPC
+# gJx0DKGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
+# AlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQg
+# VHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYgMjAyNSBDQTEC
+# EAhP3DNPfkVO28MPj/mSGDUwDQYJYIZIAWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMx
+# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjA5MjAwNTQzMzRaMC8GCSqG
+# SIb3DQEJBDEiBCBvJ3rnZqZc5bGxaTV7EmPwuVPIYCgIMePjeIKcxySb7TANBgkq
+# hkiG9w0BAQEFAASCAgBDqT8n//axV4Lb3a3dM9EGj0/8PLFNJpLKoSCFQPo6WWsP
+# I7dAbFkUs96Y2OjBHiWli0RGdoQJaEIotX8aILx57jaIJdLNETpTcoOBBOJGh+ge
+# wpw38uhtEnDzJGJDE0KkUPwF3//ICZ/FuRzIZW8D+LNSzWW1bV49nZwMvDGvZH0F
+# 9VByFZkQnhUcgEvKLkga3/LmNf+/s9i5/1hzro6aDO63zJRUSgfOad57cOQQYHgY
+# nomg/5gQtrKVU0xtJQk30H3T9Hxbxqz+oAtqmE8wsz4LTaCbztcILdYyKHBh8twK
+# XyrjjQpNwZ4p1QjasWDNSjFiuoo9S90sgz7A5zT+lpO4BsXAqlyKYSv8FqtC3mar
+# DRRPmFU9dlHoEXaM/pyf82pWJZudDmbco7E4hvbmhL+7Lr7Uebbp0Nh6MoFQT+o3
+# IuuKd7jCY+UhnQyodkvtMav7nUuaGBipMRS20VgWAbtmvRUow6wOSA9OFBUkl04u
+# IHCBSm4+EmBbj9NGBeAgonaCEPDCQpmTmYqX4d67gZpGBbcbgT+sRjjYn18yRJxg
+# ul1dKWdwYSb13zHh3f5XMZHZwQ/f5u6pa+QqNFdJuKg5Oe6HnuRioAsdJFuuwrln
+# s39RXpTQYi9iH3Ydo8vjhAB6D4NsjNmz//eH1mmCBuPB7PuhY3VTCQlj0GoYKA==
 # SIG # End signature block
