@@ -274,6 +274,12 @@ hidden Init ([string]$BackupTestCatalogTableName)
             $myExecutionId=Get-Random -Minimum 1 -Maximum 1000
             $myDestinationDatabaseName=$DatabaseName+$myExecutionId
             $this.LogWriter.Write($this.LogStaticMessage+'Destinarion Database name: '+$myDestinationDatabaseName,[LogType]::INF)
+            
+            $myOriginalLimitMsdbScanToRecentHours=$this.LimitMsdbScanToRecentHours;
+            $this.LogWriter.Write($this.LogStaticMessage+('Original Limit Msdb Scan To Recent Hours is :' + $myOriginalLimitMsdbScanToRecentHours), [LogType]::INF) 
+            if ($this.RestoreTo -lt (Get-Date).AddHours(-1*$this.LimitMsdbScanToRecentHours)) {
+                $this.LimitMsdbScanToRecentHours= ((Get-Date)-($this.RestoreTo)).Hour;
+            }
 
             #Determine candidate server(s)
             $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name: '+$this.SourceInstanceConnectionString,[LogType]::INF)
@@ -291,6 +297,20 @@ hidden Init ([string]$BackupTestCatalogTableName)
                 throw 'Source server name is empty.'
             }
 
+            #Determine restoresd server
+            $this.LogWriter.Write($this.LogStaticMessage+'Get Destination instance server name: ' + $this.DestinationInstanceConnectionString,[LogType]::INF)
+            $myDestinationInstanceInfo=Get-InstanceInformation -ConnectionString $this.DestinationInstanceConnectionString -ShowRelatedInstanceOnly
+            $myDestinationInstanceName=$myDestinationInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
+
+            #Initial Log Modules
+            Write-Verbose ('===== Testbackup database  ' + $DatabaseName + ' on ' + $mySourceInstanceName + ' started. =====')
+            $this.LogStaticMessage= '{"SourceDB":"' + $DatabaseName+ '","SourceInstance":"' + $mySourceInstanceName+'"} : '
+        # $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$myDestinationDatabaseName)
+            $this.LogWriter.Reinitialize()
+            $this.LogWriter.Write($this.LogStaticMessage+'===== BackupTest process started... ===== ', [LogType]::INF) 
+            $this.LogWriter.Write($this.LogStaticMessage+('TestDatabase ' + $DatabaseName + ' on ' + $mySourceInstanceName), [LogType]::INF) 
+            $this.LogWriter.Write($this.LogStaticMessage+'Initializing EventsTable.Create.', [LogType]::INF) 
+        
             #Determine database is not in simple recovery model
             $this.LogWriter.Write($this.LogStaticMessage+'Validate Source database recovery model.',[LogType]::INF)
             $myCommand = "
@@ -310,32 +330,14 @@ hidden Init ([string]$BackupTestCatalogTableName)
             }else{
                 $this.LogWriter.Write($this.LogStaticMessage+'Source server database is not in simple recovery model.',[LogType]::INF)
             }
-
-            #Determine restoresd server
-            $this.LogWriter.Write($this.LogStaticMessage+'Get Destination instance server name: ' + $this.DestinationInstanceConnectionString,[LogType]::INF)
-            $myDestinationInstanceInfo=Get-InstanceInformation -ConnectionString $this.DestinationInstanceConnectionString -ShowRelatedInstanceOnly
-            $myDestinationInstanceName=$myDestinationInstanceInfo.MachineNameDomainNameInstanceNamePortNumber
-
-            #Initial Log Modules
-            Write-Verbose ('===== Testbackup database  ' + $DatabaseName + ' on ' + $mySourceInstanceName + ' started. =====')
-            $this.LogStaticMessage= '{"SourceDB":"' + $DatabaseName+ '","SourceInstance":"' + $mySourceInstanceName+'"} : '
-        # $this.LogWriter.LogFilePath=$this.LogWriter.LogFilePath.Replace('{Database}',$myDestinationDatabaseName)
-            $this.LogWriter.Reinitialize()
-            $this.LogWriter.Write($this.LogStaticMessage+'===== BackupTest process started... ===== ', [LogType]::INF) 
-            $this.LogWriter.Write($this.LogStaticMessage+('TestDatabase ' + $DatabaseName + ' on ' + $mySourceInstanceName), [LogType]::INF) 
-            $this.LogWriter.Write($this.LogStaticMessage+'Initializing EventsTable.Create.', [LogType]::INF) 
-        # $this.RestoreTo=Clear-SqlParameter -ParameterValue $this.RestoreTo -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+            
+            # $this.RestoreTo=Clear-SqlParameter -ParameterValue $this.RestoreTo -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
             if($null -eq $this.RestoreTo)
             {
                 $this.RestoreTo=$this.GenerateRandomDate($this.StartDate,$this.EndDate)
                 $this.LogWriter.Write($this.LogStaticMessage+('RestoreTo is :' + $this.RestoreTo),[LogType]::INF);
             }
             
-            $myOriginalLimitMsdbScanToRecentHours=$this.LimitMsdbScanToRecentHours;
-            $this.LogWriter.Write($this.LogStaticMessage+('Origina lLimit Msdb Scan To Recent Hours is :' + $myOriginalLimitMsdbScanToRecentHours), [LogType]::INF) 
-            if ($this.RestoreTo -lt (Get-Date).AddHours(-1*$this.LimitMsdbScanToRecentHours)) {
-                $this.LimitMsdbScanToRecentHours= ((Get-Date)-($this.RestoreTo)).Hour;
-            }
             #--=======================Check shipped files catalog table connectivity
             $this.LogWriter.Write($this.LogStaticMessage+'Test catalog table connectivity.', [LogType]::INF) 
             if ((Test-DatabaseConnection -ConnectionString ($this.LogWriter.LogInstanceConnectionString) -DatabaseName 'master') -eq $false) {
@@ -468,8 +470,8 @@ Export-ModuleMember -Function New-DatabaseTest
 # SIG # Begin signature block
 # MIIb6gYJKoZIhvcNAQcCoIIb2zCCG9cCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCBPdgOOE5jnojHt
-# 54QaCZnBma2GLl52CIBh6gM/gBBLdqCCFjowggL8MIIB5KADAgECAhBuGGiP9rFT
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCRV+buVELDODZh
+# x38h4d7Vr81cZ+fwUjF5FzVY/NDnb6CCFjowggL8MIIB5KADAgECAhBuGGiP9rFT
 # sEjfxjEo89WdMA0GCSqGSIb3DQEBCwUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
 # MB4XDTI2MDcyODEyMjQ1MVoXDTI3MDcyODEyNDQ1MVowFjEUMBIGA1UEAwwLc3Fs
 # ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDNOXX1vdSL
@@ -591,28 +593,28 @@ Export-ModuleMember -Function New-DatabaseTest
 # QPT9gzGCBQYwggUCAgEBMCowFjEUMBIGA1UEAwwLc3FsZGVlcC5jb20CEG4YaI/2
 # sVOwSN/GMSjz1Z0wDQYJYIZIAWUDBAIBBQCggYQwGAYKKwYBBAGCNwIBDDEKMAig
 # AoAAoQKAADAZBgkqhkiG9w0BCQMxDAYKKwYBBAGCNwIBBDAcBgorBgEEAYI3AgEL
-# MQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQgH8qQUxLBLybQAf1fj0G+
-# ymEQcg3M13Ch5alMJahUSc0wDQYJKoZIhvcNAQEBBQAEggEAXpxgRK4M9KXVjw4R
-# DxhrG3ta59IRohkgA7l/uK3Vjb1Xr2KjTSp+m9EVb9RrohoA8r9Yyrw0eB3W+Y1D
-# yr5t/AlobOlDETzj7dkRIdBubo6kfOSTvJ1hfbBdkh4i3nVu7T10LC+RVw1k3c17
-# j6CIOuAuGFA2jKpXnra6ozvCVMkpO5UEgiOnAfyWnaJs3vNAOATHPDJOXV9Irnt0
-# ZJLhyiOJAVVDfMMJm7pjoJ7i08HyzNqg/O7r5hmpsMoeaHZgQpHR2NU1p4TtsagC
-# jPk9zeahaykgN31DEPBnWFnRldtoj3D0mGfVYQZGxHjTsljCwLRyGePJUw7ZaT13
-# Z2DawqGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
+# MQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQgJVR0JAAnoIu0OCCjmmIQ
+# bpkq98mJK/DhM1NhhB/WfG8wDQYJKoZIhvcNAQEBBQAEggEAeMdmx/18ooZ9AUXG
+# lO8jt9j1TUrQhSDcLzOPHlmsCNudJ5loR+yBehwdNxl3SlL15GUbdMgPm6Yqz58U
+# HX9xQBVGul+1I7R5goJOlih+O6uLci198Ab139YDXE8pvAftrCmG+YgRcqQ7scBG
+# WsoWYYSkcSyt+BF3cqHjHuixWikaqBW/+PXPoWVM/9nHp39CwaGWg/bypFxSjvpT
+# /69Mz0M7uTEnvPJslfAeAgyJfwKd7AgSyW+NzqrJy/2Rp1xd+R7TwnfN6ibFOHOL
+# 1BARR8cNiuWZ31K+09PpgyZ7Xn5Fn8aghT9Ptg3NEMjUYiqM5MFYTb9L8fQ9kKF3
+# UtogsKGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
 # AlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQg
 # VHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYgMjAyNSBDQTEC
 # EAhP3DNPfkVO28MPj/mSGDUwDQYJYIZIAWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMx
-# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjEwMDQxMzQyNTRaMC8GCSqG
-# SIb3DQEJBDEiBCAZy5WNmZUvotG08qHvJcL+yd0Psu3MOVmVKvlD7wk77DANBgkq
-# hkiG9w0BAQEFAASCAgBOwEsS7qTMoeDii8P6xOnAlzszUAAphuU6enznWEOyf1oE
-# KLNPOcx6cUVrjT0FEbOs2vhMcJhKd5Z4pwfBbihuyNqGnXt2p4AbMXHlicvsPeN0
-# K8ZRoPNblVJ3Bj56qyTY6WHBNGZcsjgDvzRnIi2ShB+29PDKVgtNxCbA8J1lK6NJ
-# 3gjxxPurc0uP8+mFXcaT7hCStCPgP9gf5rWXFNzUNWwD0Lk8zb0Jjx6oWR+ZgMBc
-# PT0MTWkPkeS2tIzBaGegY6+Iqn7s+Y2+19H3XxhfRkFXDhLy81bawudpG6FNvW1d
-# DXt0TwghjUj28MrjvTojV9l1zP1RZ7Hn0m1xd1qcYBB4ztes4swdCeK/usOlFVoO
-# e3eI5wU1DybZ2BjGiWvy5wkqTIPHqkEzizAhRMhpePIO9Z0c+Czcxm1aiYjUmPod
-# DjVRiO5KmQzPIo9noV7PCPliSRIvxb9r+1qwXjrLns6FII6lcqRGZtee8JY48Dk4
-# wT2P0q9GHZi6gQL5RtAlptkAzvP9qABkWo9qhCDsHTZ1LmQmLDexccOyTYcQ+5hH
-# 0qXZiAzYDNjUC3/WqIk3UqIhf7vLCfaOTtP0WtrPCxg2k5A8KTSEsn+DrHvZRzb6
-# FZD4/Ms2AKZeXHK7zXJqIZ6dEssnm9h6+BTlK5aQK3T4qOxf/58C5Uhr4Zd8gg==
+# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjEwMTQxNTQ5MTZaMC8GCSqG
+# SIb3DQEJBDEiBCA9viWcDG4VtlnqRF1exTYXLEm1cGlMKrPwKwluGMwfvTANBgkq
+# hkiG9w0BAQEFAASCAgBSa/CsQov+NtqEbhyNJ5YiMbDQ2SgvWyaqM3gRqYjpasMA
+# JSxi0awl2TZtLRsX8VjJnde3W1fAxnSO78X93SeaTWu9DMiVUAYXF7s3/28ECOLx
+# IU3obtEWQ4+eiXBOtuEuDUAsnLLyrprbOPGGfUMi4woBv6JlgLVH7hJiqxlEVxHM
+# 25O5ESFSW4K/ihpQvhOeOmCFTjtZIM8Wn+81t8NK2hHm1awfAnAZy9sZQB3pFvlY
+# py1RoMWHInmFPSFiK0fcwc/FKAwkhP37w0BN62dLSe+gk8Jn3IA5CbKEaTDhGEWH
+# 2oMn3X94PZpUZtsaZZqUewwltuqPqCLKVQj6O424Foy245ewK2eXgIZTZXlrDp+F
+# Vak3IEw6rATxHCh2lUYYhC6wLzDaHsF/uCDFf3HWqbbMuzQprLHBMpb3alVBtA5V
+# mqapweVXNki2kJuNrX88FGpQ7J8RPhLfd0EeWhDsQYZ1XCJTRdes1qreO6kIxTqY
+# 3EjyKVpH4Qj+1CW05Hea+8BPPGuC1Bmy4iNEJ+CUUcUCcBCsd3BposIbEi5lXfTf
+# PyroH457fqeovIXleltIhN1KxoRBw7Ao3BDr12KZX49WPcsb7q5QJO4rp+82dDTw
+# Nv0U5zQFYl0X3uEp8VETVtGD8FSllM15P9jepg/LV3Gse+jZ+M1VlWQW5XzhoA==
 # SIG # End signature block
