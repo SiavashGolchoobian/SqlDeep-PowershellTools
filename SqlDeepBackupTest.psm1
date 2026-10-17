@@ -277,9 +277,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
             
             $myOriginalLimitMsdbScanToRecentHours=$this.LimitMsdbScanToRecentHours;
             $this.LogWriter.Write($this.LogStaticMessage+('Original Limit Msdb Scan To Recent Hours is :' + $myOriginalLimitMsdbScanToRecentHours), [LogType]::INF) 
-            if ($this.RestoreTo -lt (Get-Date).AddHours(-1*$this.LimitMsdbScanToRecentHours)) {
-                $this.LimitMsdbScanToRecentHours= ((Get-Date)-($this.RestoreTo)).Hour;
-            }
 
             #Determine candidate server(s)
             $this.LogWriter.Write($this.LogStaticMessage+'Get Source instance server name: '+$this.SourceInstanceConnectionString,[LogType]::INF)
@@ -311,6 +308,16 @@ hidden Init ([string]$BackupTestCatalogTableName)
             $this.LogWriter.Write($this.LogStaticMessage+('TestDatabase ' + $DatabaseName + ' on ' + $mySourceInstanceName), [LogType]::INF) 
             $this.LogWriter.Write($this.LogStaticMessage+'Initializing EventsTable.Create.', [LogType]::INF) 
         
+            # $this.RestoreTo=Clear-SqlParameter -ParameterValue $this.RestoreTo -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
+            if($null -eq $this.RestoreTo)
+            {
+                $this.RestoreTo=$this.GenerateRandomDate($this.StartDate,$this.EndDate)
+                $this.LogWriter.Write($this.LogStaticMessage+('RestoreTo is :' + $this.RestoreTo),[LogType]::INF);
+            }
+            if ($this.RestoreTo -lt (Get-Date).AddHours(-1*$this.LimitMsdbScanToRecentHours)) {
+                $this.LimitMsdbScanToRecentHours = [Math]::Ceiling(((Get-Date) - ([datetime]$this.RestoreTo)).TotalHours)
+            }
+
             #Determine database is not in simple recovery model
             $this.LogWriter.Write($this.LogStaticMessage+'Validate Source database recovery model.',[LogType]::INF)
             $myCommand = "
@@ -329,13 +336,6 @@ hidden Init ([string]$BackupTestCatalogTableName)
                 throw 'Source server database is in simple recovery model.'
             }else{
                 $this.LogWriter.Write($this.LogStaticMessage+'Source server database is not in simple recovery model.',[LogType]::INF)
-            }
-            
-            # $this.RestoreTo=Clear-SqlParameter -ParameterValue $this.RestoreTo -RemoveSpace -RemoveWildcard -RemoveBraces -RemoveSingleQuote -RemoveDoubleQuote -RemoveDollerSign
-            if($null -eq $this.RestoreTo)
-            {
-                $this.RestoreTo=$this.GenerateRandomDate($this.StartDate,$this.EndDate)
-                $this.LogWriter.Write($this.LogStaticMessage+('RestoreTo is :' + $this.RestoreTo),[LogType]::INF);
             }
             
             #--=======================Check shipped files catalog table connectivity
@@ -470,8 +470,8 @@ Export-ModuleMember -Function New-DatabaseTest
 # SIG # Begin signature block
 # MIIb6gYJKoZIhvcNAQcCoIIb2zCCG9cCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCRV+buVELDODZh
-# x38h4d7Vr81cZ+fwUjF5FzVY/NDnb6CCFjowggL8MIIB5KADAgECAhBuGGiP9rFT
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCB9bCr3GrAKmqvF
+# a4CzHiVtuRIIlOlwJM8Y3Gcv1ZVN66CCFjowggL8MIIB5KADAgECAhBuGGiP9rFT
 # sEjfxjEo89WdMA0GCSqGSIb3DQEBCwUAMBYxFDASBgNVBAMMC3NxbGRlZXAuY29t
 # MB4XDTI2MDcyODEyMjQ1MVoXDTI3MDcyODEyNDQ1MVowFjEUMBIGA1UEAwwLc3Fs
 # ZGVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDNOXX1vdSL
@@ -593,28 +593,28 @@ Export-ModuleMember -Function New-DatabaseTest
 # QPT9gzGCBQYwggUCAgEBMCowFjEUMBIGA1UEAwwLc3FsZGVlcC5jb20CEG4YaI/2
 # sVOwSN/GMSjz1Z0wDQYJYIZIAWUDBAIBBQCggYQwGAYKKwYBBAGCNwIBDDEKMAig
 # AoAAoQKAADAZBgkqhkiG9w0BCQMxDAYKKwYBBAGCNwIBBDAcBgorBgEEAYI3AgEL
-# MQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQgJVR0JAAnoIu0OCCjmmIQ
-# bpkq98mJK/DhM1NhhB/WfG8wDQYJKoZIhvcNAQEBBQAEggEAeMdmx/18ooZ9AUXG
-# lO8jt9j1TUrQhSDcLzOPHlmsCNudJ5loR+yBehwdNxl3SlL15GUbdMgPm6Yqz58U
-# HX9xQBVGul+1I7R5goJOlih+O6uLci198Ab139YDXE8pvAftrCmG+YgRcqQ7scBG
-# WsoWYYSkcSyt+BF3cqHjHuixWikaqBW/+PXPoWVM/9nHp39CwaGWg/bypFxSjvpT
-# /69Mz0M7uTEnvPJslfAeAgyJfwKd7AgSyW+NzqrJy/2Rp1xd+R7TwnfN6ibFOHOL
-# 1BARR8cNiuWZ31K+09PpgyZ7Xn5Fn8aghT9Ptg3NEMjUYiqM5MFYTb9L8fQ9kKF3
-# UtogsKGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
+# MQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG9w0BCQQxIgQgvWFjEwiNC2KwCmhn77Fd
+# fDggo6WSMhRlpd9Wot0tRyowDQYJKoZIhvcNAQEBBQAEggEAeEx9Kcgb3Enr3lOC
+# ZGR1G8d0r0XlvKVJ1HtPMD9q+JVW6GtnoOfPfixd4o8/eSaU1qoIIJ/I921J7YPq
+# AEThe8lKE81VwG4L/5Yk1c4uMO0TFAJWT9c6+uFCCFO83g+SX99Dc3Imcp/zqr0C
+# rfiaH/0ZObRR/zQ6xKZ2G2lrpPd7np3lxQpy4moat58MHOEdOokqRVPwBaP4s6Rm
+# D8BMP4JQkhlVZpAJSnrAi3rAYe59haDRTQq4yP/GWuGPDACtRr4CQY8O0aMQpgGs
+# OWFoyHPgzGLKHIIwP+gHVFPAo2zgm6rFy8XjdbGknxqdXmrO3aZtJKqE09Qv2cPT
+# B3OnHqGCAyYwggMiBgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYT
 # AlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQg
 # VHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYgMjAyNSBDQTEC
 # EAhP3DNPfkVO28MPj/mSGDUwDQYJYIZIAWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMx
-# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjEwMTQxNTQ5MTZaMC8GCSqG
-# SIb3DQEJBDEiBCA9viWcDG4VtlnqRF1exTYXLEm1cGlMKrPwKwluGMwfvTANBgkq
-# hkiG9w0BAQEFAASCAgBSa/CsQov+NtqEbhyNJ5YiMbDQ2SgvWyaqM3gRqYjpasMA
-# JSxi0awl2TZtLRsX8VjJnde3W1fAxnSO78X93SeaTWu9DMiVUAYXF7s3/28ECOLx
-# IU3obtEWQ4+eiXBOtuEuDUAsnLLyrprbOPGGfUMi4woBv6JlgLVH7hJiqxlEVxHM
-# 25O5ESFSW4K/ihpQvhOeOmCFTjtZIM8Wn+81t8NK2hHm1awfAnAZy9sZQB3pFvlY
-# py1RoMWHInmFPSFiK0fcwc/FKAwkhP37w0BN62dLSe+gk8Jn3IA5CbKEaTDhGEWH
-# 2oMn3X94PZpUZtsaZZqUewwltuqPqCLKVQj6O424Foy245ewK2eXgIZTZXlrDp+F
-# Vak3IEw6rATxHCh2lUYYhC6wLzDaHsF/uCDFf3HWqbbMuzQprLHBMpb3alVBtA5V
-# mqapweVXNki2kJuNrX88FGpQ7J8RPhLfd0EeWhDsQYZ1XCJTRdes1qreO6kIxTqY
-# 3EjyKVpH4Qj+1CW05Hea+8BPPGuC1Bmy4iNEJ+CUUcUCcBCsd3BposIbEi5lXfTf
-# PyroH457fqeovIXleltIhN1KxoRBw7Ao3BDr12KZX49WPcsb7q5QJO4rp+82dDTw
-# Nv0U5zQFYl0X3uEp8VETVtGD8FSllM15P9jepg/LV3Gse+jZ+M1VlWQW5XzhoA==
+# CwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNjEwMTcwNTM5MzNaMC8GCSqG
+# SIb3DQEJBDEiBCC3kGONMxTjAD9G6aVO0cT/Z1rRZz2UTvAtVG4plWXm7zANBgkq
+# hkiG9w0BAQEFAASCAgBay3sPm2JVT6zoXlksB3whiDu+69TusApYOm6S75BTYNjW
+# zoobf+/vzz9/koaRUbJvy3YfWd7N7R0SscSMReKr0Aw1R3iqCISzbGFHfFl90pSP
+# dBc9Eqz8s8iIvwId6Qzg0kptR+J8fhe+RjRUlRARewfhpOZBd2/fcNvEH1zlFoG+
+# 2XU+mQyUuWi/DbUA13LORDwJzH8+U1hRLDCNSgQOWnJAMs18/W3FUD0JycZsX1dC
+# lSPepVS9qUbyAzGc1W1Yyx2fwlxbkT5fxhKsIwd4gR0G5aS2c4TKN+b0qQrDhy75
+# ZuKvjOS4VldOLQKT7WnJG7hTLP+Y7xheLOoiaMgwtiAg/d3gY8W1CS7qqqF/LNfj
+# j2O4q4HdY6394wXq8DmroirVe9gC1Ow1ByuZ6iX4TGQdVzoQIhTVb3jrqSgFzsB+
+# j8yOJnKJbqDjMqRko36w6ZLpaKngKnXUOcAGVHZwjvPuYSINrr2L5HxKpI24NOnT
+# xB/HLpfP+wHhPC7zQsIyPZYj+lW36Ug8F/8h84IsP9qJ6OOTj+e2vDKGBcE3zmzq
+# toEKCQQW4P3SNBXJSE8mgCTHjw6A73lhciv1jDhZlEAmkMbZ26XksnfS2ic5wyAj
+# m6ZwlfDd16Gewl2gEkhiDQ2y5kpkKu/p//W3kL2YYgr5pU2weSeeiNzp9JLNhQ==
 # SIG # End signature block
