@@ -14,7 +14,8 @@ function RestoreAllDatabasesFromRepository {
         [string]$RepositoryPath,
         [string]$RestoreConnectionString,
         [string]$NewDataPath,
-        [string]$NewLogPath
+        [string]$NewLogPath,
+        [string]$DatabaseNamePrefix
     )
 
     # Get all backup files from the repository
@@ -44,7 +45,7 @@ function RestoreAllDatabasesFromRepository {
         }
 
         
-        $myDatabaseName = $myHeaderInfo.DatabaseName
+        $myDatabaseName = $DatabaseNamePrefix + $myHeaderInfo.DatabaseName
         $myNewDataPath = $NewDataPath+$myDatabaseName
         $myNewLogPath = $NewLogPath+$myDatabaseName
         # Construct the MOVE options for the RESTORE command

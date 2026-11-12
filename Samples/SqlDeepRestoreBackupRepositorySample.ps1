@@ -6,4 +6,5 @@ $ConnectionString =  "Data Source=LSNR.SQLDEEP.LOCAL\NODE,49149;Initial Catalog=
 $RepositoryPath = "U:\Databases\Backup\BackupFolderName"   # The repository path where backups are located  
 $DataPath="F:\Data01\Databases\Data\" # New folder for move data file
 $logPath="F:\Log01\Databases\Log\"   # New folder for move log file
-RestoreAllDatabasesFromRepository -RepositoryPath $RepositoryPath -RestoreConnectionString $ConnectionString -NewDataPath $DataPath -NewLogPath $logPath
+$DatabaseNamePrefix="01_"   # Prefix name for restored database name and it's folder, you can use empty string instead
+RestoreAllDatabasesFromRepository -RepositoryPath $RepositoryPath -RestoreConnectionString $ConnectionString -NewDataPath $DataPath -NewLogPath $logPath -DatabaseNamePrefix $DatabaseNamePrefix
